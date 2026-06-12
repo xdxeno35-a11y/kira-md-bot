@@ -1,4 +1,4 @@
-// play.js - KIRA X MD (Clean + Bold Text)
+// play.js - KIRA X MD (Supports both search & direct YouTube link)
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
@@ -10,49 +10,57 @@ module.exports = {
     alias: ['song', 'music', 'audio'],
     execute: async (sock, msg, args) => {
         const jid = msg.key.remoteJid;
-        const query = args.join(' ');
+        const query = (args && Array.isArray(args) ? args.join(' ') : '').trim();
 
         if (!query) {
-            await sock.sendMessage(jid, { text: `*KIRA Error* : Missing song name.\nExample: .play Believer` }, { quoted: msg });
+            await sock.sendMessage(jid, { text: `*KIRA Error* : Missing song name or YouTube link.\nExample: .play Believer or .play https://youtu.be/...` }, { quoted: msg });
             return;
         }
 
-        // First status: Searching (bold)
         const statusMsg = await sock.sendMessage(jid, { text: `*KIRA Searching* : ${query}...` });
 
         try {
             const { title, duration, audioBuffer } = await downloadAndGetAudio(query);
-
-            // Second status: Downloading (bold)
             await sock.sendMessage(jid, { text: `*KIRA downloading* : ${title} (${duration})...`, edit: statusMsg.key });
-
-            // Send audio with bold watermark caption
             await sock.sendMessage(jid, {
                 audio: audioBuffer,
                 mimetype: 'audio/mpeg',
                 ptt: false,
                 fileName: `${title.slice(0, 40)}.mp3`,
-                caption: `*KIRA X MD*`
+                caption: `*KIRA X MD take*`
             });
-
         } catch (error) {
-            console.error(error);
+            console.error('Play error:', error);
             await sock.sendMessage(jid, { text: `*KIRA Error* : ${error.message}`, edit: statusMsg.key });
         }
     }
 };
 
-async function downloadAndGetAudio(searchQuery) {
+async function downloadAndGetAudio(input) {
     const tempDir = path.join(__dirname, '../temp');
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
     const outputPath = path.join(tempDir, `${Date.now()}.mp3`);
 
     const ytDlpPath = path.join(__dirname, '../yt-dlp.exe');
-    
-    // Get song info via JSON
-    const infoCommand = `"${ytDlpPath}" "ytsearch1:${searchQuery}" --dump-json --no-playlist`;
+    const cookiePath = path.join(__dirname, '../cookies.txt');
+    const cookieFlag = fs.existsSync(cookiePath) ? ` --cookies "${cookiePath}"` : '';
+
+    // Determine if input is a YouTube URL
+    const isUrl = input.match(/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/);
+
+    let target;
+    if (isUrl) {
+        // Direct URL – no search
+        target = `"${input}"`;
+    } else {
+        // Search query
+        target = `"ytsearch1:${input}"`;
+    }
+
+    // Get metadata (title, duration)
     let title, duration;
     try {
+        const infoCommand = `"${ytDlpPath}" ${target} --dump-json --no-playlist --js-runtime node${cookieFlag}`;
         const { stdout } = await execPromise(infoCommand, { timeout: 30000 });
         const info = JSON.parse(stdout);
         title = info.title;
@@ -60,18 +68,18 @@ async function downloadAndGetAudio(searchQuery) {
     } catch (err) {
         throw new Error('Failed to get song info: ' + err.message);
     }
-    
+
     // Download audio
-    const downloadCommand = `"${ytDlpPath}" "ytsearch1:${searchQuery}" -f bestaudio --extract-audio --audio-format mp3 --audio-quality 0 --no-playlist -o "${outputPath}"`;
+    const downloadCommand = `"${ytDlpPath}" ${target} -f bestaudio --extract-audio --audio-format mp3 --audio-quality 0 --no-playlist --js-runtime node${cookieFlag} -o "${outputPath}"`;
     await execPromise(downloadCommand, { timeout: 120000 });
-    
+
     if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 10000) {
         throw new Error('Download failed');
     }
-    
+
     const audioBuffer = fs.readFileSync(outputPath);
     fs.unlinkSync(outputPath);
-    
+
     return { title, duration, audioBuffer };
 }
 

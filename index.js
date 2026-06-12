@@ -14,6 +14,12 @@ const { commands, loadPlugins } = require("./lib/plugins");
 
 loadPlugins();
 
+// Helper: random delay between min and max milliseconds
+function randomDelay(minMs = 2000, maxMs = 5000) {
+    const delay = Math.floor(Math.random() * (maxMs - minMs + 1) + minMs);
+    return new Promise(resolve => setTimeout(resolve, delay));
+}
+
 async function startKira() {
     const { state, saveCreds } = await useMultiFileAuthState("./session");
 
@@ -48,9 +54,8 @@ async function startKira() {
 
             if (shouldReconnect) {
                 console.log("🔄 Reconnecting in 5 seconds...");
-                setTimeout(() => {
-                    startKira();
-                }, 5000);
+                await randomDelay(5000, 5000); // Wait exactly 5 seconds
+                startKira();
             } else {
                 console.log("❌ Logged Out. Delete session and scan QR again.");
             }
@@ -93,6 +98,10 @@ async function startKira() {
             );
 
             if (!command) return;
+
+            // 🔥 BAN PROTECTION: Show typing indicator + random delay
+            await sock.sendPresenceUpdate('composing', msg.key.remoteJid);
+            await randomDelay(2500, 6000); // 2.5 to 6 seconds human-like delay
 
             await command.execute(sock, msg, args);
         } catch (err) {
