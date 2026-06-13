@@ -33,13 +33,11 @@ async function startKira() {
         logger: P({ level: "silent" }),
         auth: state,
         printQRInTerminal: false, // 🚫 QR കോഡ് ഓഫ് ആക്കി
-        browser: ["Ubuntu", "Chrome", "20.0.04"] // പെയറിങ് കോഡിന് ഇത് ആവശ്യമാണ്
+        browser: ["Ubuntu", "Chrome", "20.0.04"]
     });
 
-    // 🚀 PAIRING CODE LOGIC: സുരക്ഷിതമായി നമ്പർ എടുക്കുന്നു
+    // 🚀 PAIRING CODE LOGIC
     if (!sock.authState.creds.registered) {
-        
-        // പാനലിലെ വേരിയബിളിൽ നിന്ന് നേരിട്ട് നമ്പർ എടുക്കാൻ
         const phoneNumber = process.env.BOT_NUMBER; 
         
         if (phoneNumber) {
@@ -55,8 +53,7 @@ async function startKira() {
                 }
             }, 3000);
         } else {
-            console.log("\n⚠️ ശ്രദ്ധിക്കുക: BOT_NUMBER എന്ന വേരിയബിൾ പാനലിൽ കൊടുത്തിട്ടില്ല!");
-            console.log("ദയവായി നിന്റെ Railway/Render പാനലിൽ പോയി Variables-ൽ BOT_NUMBER ആഡ് ചെയ്യുക.\n");
+            console.log("\n⚠️ ശ്രദ്ധിക്കുക: BOT_NUMBER വേരിയബിൾ പാനലിൽ നൽകിയിട്ടില്ല!\n");
         }
     }
 
@@ -64,7 +61,17 @@ async function startKira() {
         const { connection, lastDisconnect } = update;
 
         if (connection === "open") {
-            console.log("✅ KIRA X MD Connected Successfully! 🚀 Ready to fly!");
+            console.log(`
+╔══════════════════════════════════════════════════════╗
+║                                                      ║
+║    ⚡ KIRA X MD - SYSTEM ONLINE - [PREMIUM]          ║
+║    ────────────────────────────────────────          ║
+║    ◈ Status: Encrypted & Secure                      ║
+║    ◈ Version: 1.0.0 (Stable)                         ║
+║    ◈ Support: https://chat.whatsapp.com/C3hbXjblNLiF7CoDYJ8lwY ║
+║                                                      ║
+╚══════════════════════════════════════════════════════╝
+            `);
         }
 
         if (connection === "close") {
@@ -86,33 +93,18 @@ async function startKira() {
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
         try {
-            const msg = messages[0];
-
+            const msg = messages;
             if (!msg.message || msg.key.remoteJid === 'status@broadcast') return;
 
-            const text =
-                msg.message.conversation ||
-                msg.message.extendedTextMessage?.text ||
-                "";
-
+            const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
             const prefix = process.env.PREFIX || ".";
 
             if (!text.startsWith(prefix)) return;
 
-            const commandName = text
-                .slice(prefix.length)
-                .trim()
-                .split(" ")[0]
-                .toLowerCase();
-
-            const args = text
-                .slice(prefix.length + commandName.length)
-                .trim()
-                .split(/ +/)
-                .filter(Boolean);
+            const commandName = text.slice(prefix.length).trim().split(" ").toLowerCase();
+            const args = text.slice(prefix.length + commandName.length).trim().split(/ +/).filter(Boolean);
 
             const command = commandMap.get(commandName);
-
             if (!command) return;
 
             await command.execute(sock, msg, args);
@@ -123,3 +115,9 @@ async function startKira() {
 }
 
 startKira();
+
+// 🚀 RAILWAY FIX: Web Server
+const http = require('http');
+http.createServer((req, res) => res.end('Kira Bot is Alive! ⚡')).listen(process.env.PORT || 8080, () => {
+    console.log("🌐 Web server is running...");
+});
