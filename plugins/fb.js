@@ -1,9 +1,4 @@
-// plugins/fb.js - KIRA X MD (Facebook video downloader)
-const { exec } = require('child_process');
-const util = require('util');
-const execPromise = util.promisify(exec);
-const fs = require('fs');
-const path = require('path');
+const axios = require('axios');
 
 module.exports = {
     name: 'fb',
@@ -17,32 +12,30 @@ module.exports = {
         const url = (args && Array.isArray(args) ? args.join(' ') : '').trim();
 
         if (!url) {
-            await sock.sendMessage(jid, { react: { text: "❌", key: msg.key } });
-            return;
+            return await sock.sendMessage(jid, { text: "❌ *Please provide a Facebook video link!*" }, { quoted: msg });
         }
 
         await sock.sendMessage(jid, { react: { text: "📥", key: msg.key } });
 
-        const tempDir = path.join(__dirname, '../temp');
-        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-        const outputPath = path.join(tempDir, `fb_${Date.now()}.mp4`);
-
-        const ytDlpPath = path.join(__dirname, '../yt-dlp.exe');
-        const cookiePath = path.join(__dirname, '../cookies.txt');
-        const cookieFlag = fs.existsSync(cookiePath) ? ` --cookies "${cookiePath}"` : '';
-        const command = `"${ytDlpPath}" -f bestvideo+bestaudio --merge-output-format mp4 -o "${outputPath}" "${url}"${cookieFlag} --js-runtime node`;
-
         try {
-            await execPromise(command, { timeout: 90000 });
-            if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 10000) throw new Error();
+            // Facebook Downloader API എൻഡ്‌പോയിന്റ്
+            const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/fbdl?url=${encodeURIComponent(url)}`;
+            const res = await axios.get(apiUrl);
+            
+            // API-ൽ നിന്ന് ലഭിക്കുന്ന വീഡിയോ ലിങ്ക്
+            const videoUrl = res.data.result.video_hd || res.data.result.video_sd;
 
-            const buffer = fs.readFileSync(outputPath);
-            await sock.sendMessage(jid, { video: buffer, mimetype: 'video/mp4', caption: 'KIRA X MD' });
+            await sock.sendMessage(jid, { 
+                video: { url: videoUrl }, 
+                mimetype: 'video/mp4', 
+                caption: '*🎌 KIRA X MD FB DOWNLOADER 🎌*' 
+            }, { quoted: msg });
+            
             await sock.sendMessage(jid, { react: { text: "✅", key: msg.key } });
         } catch (err) {
+            console.error("FB Error:", err);
+            await sock.sendMessage(jid, { text: "❌ *Download failed!*" }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: "❌", key: msg.key } });
-        } finally {
-            if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
         }
     }
 };

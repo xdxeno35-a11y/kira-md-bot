@@ -1,6 +1,5 @@
-// plugins/yta.js - Download audio as document
 const { downloadAudio } = require('../lib/yt');
-const fs = require('fs');
+const axios = require('axios');
 
 module.exports = {
     name: 'yta',
@@ -12,26 +11,34 @@ module.exports = {
     async execute(sock, msg, args) {
         const jid = msg.key.remoteJid;
         let url = (args && Array.isArray(args) ? args.join(' ') : '').trim();
-        if (!url) {
-            await sock.sendMessage(jid, { text: `🎵 *YTA*\n\n❌ *Missing URL*` }, { quoted: msg });
-            return;
+
+        if (!url || !url.includes('youtube.com')) {
+            return await sock.sendMessage(jid, { text: `❌ *Please provide a valid YouTube URL!*` }, { quoted: msg });
         }
-        const match = url.match(/(https?:\/\/[^\s]+)/);
-        if (match) url = match[1];
 
         await sock.sendMessage(jid, { react: { text: "📥", key: msg.key } });
-        const statusMsg = await sock.sendMessage(jid, { text: `📥 Downloading audio...` });
+        const statusMsg = await sock.sendMessage(jid, { text: `📥 *Downloading audio as document...*` });
 
         try {
+            // 1. API ഉപയോഗിച്ച് ഓഡിയോ ഡൗൺലോഡ് ലിങ്ക് എടുക്കുന്നു
             const audio = await downloadAudio(url);
-            const buffer = fs.readFileSync(audio.path);
-            await sock.sendMessage(jid, { document: buffer, mimetype: 'audio/mpeg', fileName: `${audio.title}.mp3`, caption: 'KIRA X MD' });
-            await sock.sendMessage(jid, { text: `✅ *Audio sent*`, edit: statusMsg.key });
+            
+            // 2. നേരിട്ട് ബഫർ എടുക്കുന്നു
+            const { data: buffer } = await axios.get(audio.path, { responseType: 'arraybuffer' });
+
+            // 3. Document ആയി അയക്കുന്നു
+            await sock.sendMessage(jid, { 
+                document: buffer, 
+                mimetype: 'audio/mpeg', 
+                fileName: `${audio.title || 'audio'}.mp3`, 
+                caption: '*🎌 KIRA X MD YTA DOWNLOADER 🎌*' 
+            }, { quoted: msg });
+            
+            await sock.sendMessage(jid, { text: `✅ *Audio sent as document*`, edit: statusMsg.key });
             await sock.sendMessage(jid, { react: { text: "✅", key: msg.key } });
-            fs.unlinkSync(audio.path);
         } catch (err) {
             console.error(err);
-            await sock.sendMessage(jid, { text: `❌ Failed.`, edit: statusMsg.key });
+            await sock.sendMessage(jid, { text: `❌ *Failed to download!*`, edit: statusMsg.key });
             await sock.sendMessage(jid, { react: { text: "❌", key: msg.key } });
         }
     }

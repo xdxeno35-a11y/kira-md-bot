@@ -1,12 +1,10 @@
-// plugins/pinterest.js - KIRA X MD (Pinterest downloader – silent, only reactions)
-const primesave = require('primesave-dl');
 const axios = require('axios');
 
 module.exports = {
     name: 'pinterest',
     alias: ['pin', 'pindl'],
     category: 'downloader',
-    description: 'Download Pinterest media (silent, only reactions)',
+    description: 'Download Pinterest media',
     usage: `${process.env.PREFIX || '.'}pinterest <URL>`,
 
     async execute(sock, msg, args) {
@@ -15,31 +13,25 @@ module.exports = {
 
         if (!url) {
             await sock.sendMessage(jid, { react: { text: "❌", key: msg.key } });
-            await sock.sendMessage(jid, { text: `📌 *PINTEREST*\n\nMissing URL\nExample: .pinterest https://pin.it/xxxxx` }, { quoted: msg });
-            return;
+            return await sock.sendMessage(jid, { text: `📌 *PINTEREST*\n\nMissing URL` }, { quoted: msg });
         }
 
-        // Start reaction
         await sock.sendMessage(jid, { react: { text: "📌", key: msg.key } });
 
         try {
-            const result = await primesave(url);
-            if (!result.success || !result.options || result.options.length === 0) throw new Error('No media');
-
-            const media = result.options[0];
-            const mediaUrl = media.url;
-            const isVideo = media.type === 'Video';
-
-            const mediaRes = await axios.get(mediaUrl, { responseType: 'arraybuffer', timeout: 30000 });
-            const mediaBuffer = Buffer.from(mediaRes.data);
+            // API എൻഡ്‌പോയിന്റ് (Pinterest-ന് API-ൽ 'pin' എന്ന് കൊടുത്താൽ മതിയാകും)
+            const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/pinterest?url=${encodeURIComponent(url)}`;
+            const res = await axios.get(apiUrl);
+            
+            const mediaUrl = res.data.result.url; 
+            const isVideo = res.data.result.type === 'video';
 
             if (isVideo) {
-                await sock.sendMessage(jid, { video: mediaBuffer, mimetype: 'video/mp4' });
+                await sock.sendMessage(jid, { video: { url: mediaUrl }, mimetype: 'video/mp4' });
             } else {
-                await sock.sendMessage(jid, { image: mediaBuffer });
+                await sock.sendMessage(jid, { image: { url: mediaUrl } });
             }
 
-            // Success reaction
             await sock.sendMessage(jid, { react: { text: "✅", key: msg.key } });
         } catch (err) {
             console.error("Pinterest error:", err);

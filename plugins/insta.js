@@ -1,6 +1,4 @@
-const { exec } = require('child_process');
-const util = require('util');
-const execPromise = util.promisify(exec);
+const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
@@ -13,56 +11,32 @@ module.exports = {
 
     async execute(sock, msg, args) {
         const jid = msg.key.remoteJid;
-        
         let url = (args && Array.isArray(args) ? args.join(' ') : '').trim();
-        const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         
-        // ലിങ്ക് എടുക്കാൻ കുറച്ചുകൂടി ഡീപ്പായി സ്കാൻ ചെയ്യുന്നു
-        if (!url && quoted) {
-            const getRawText = (q) => {
-                return q.conversation || 
-                       q.extendedTextMessage?.text || 
-                       q.imageMessage?.caption || 
-                       q.videoMessage?.caption || 
-                       q.buttonsMessage?.contentText || 
-                       "";
-            };
-
-            let rawText = getRawText(quoted);
-
-            // ഒരുപക്ഷേ ലിങ്ക് ഉള്ളിൽ ക്വോട്ട് ചെയ്ത മെസ്സേജിലാണെങ്കിൽ
-            if (!rawText && quoted.extendedTextMessage?.contextInfo?.quotedMessage) {
-                rawText = getRawText(quoted.extendedTextMessage.contextInfo.quotedMessage);
-            }
-
-            const match = rawText.match(/https?:\/\/(www\.)?instagram\.com\/\S+/);
-            url = match ? match[0] : "";
+        // ലിങ്ക് എടുക്കുന്ന കോഡ് അതേപോലെ നിലനിർത്തുന്നു
+        if (!url && msg.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
+            const quoted = msg.message.extendedTextMessage.contextInfo.quotedMessage;
+            const text = quoted.conversation || quoted.extendedTextMessage?.text || "";
+            const match = text.match(/https?:\/\/(www\.)?instagram\.com\/\S+/);
+            url = match ? match : "";
         }
 
         if (!url || !url.includes('instagram.com')) {
-            await sock.sendMessage(jid, { react: { text: "❌", key: msg.key } });
-            return await sock.sendMessage(jid, { text: "❌ *Link not found in reply. Please send the link properly or reply to a valid Instagram link!*" }, { quoted: msg });
+            return await sock.sendMessage(jid, { text: "❌ *Please provide a valid Instagram link!*" }, { quoted: msg });
         }
 
         await sock.sendMessage(jid, { react: { text: "📥", key: msg.key } });
 
-        const tempDir = path.join(__dirname, '../temp');
-        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-        const outputPath = path.join(tempDir, `insta_${Date.now()}.mp4`);
-
-        const ytDlpPath = path.join(__dirname, '../yt-dlp.exe');
-        const cookiePath = path.join(__dirname, '../cookies.txt');
-        const cookieFlag = fs.existsSync(cookiePath) ? ` --cookies "${cookiePath}"` : '';
-        
-        const command = `"${ytDlpPath}" -f "best[ext=mp4]" -o "${outputPath}" "${url}"${cookieFlag}`;
-
         try {
-            await execPromise(command, { timeout: 120000 });
+            // API ഉപയോഗിച്ച് ഡൗൺലോഡ് ചെയ്യുന്നു
+            const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/igdl?url=${encodeURIComponent(url)}`;
+            const res = await axios.get(apiUrl);
             
-            if (!fs.existsSync(outputPath)) throw new Error("Download failed");
+            // API-യിൽ നിന്ന് വീഡിയോ ലിങ്ക് കിട്ടുന്നു (ഇത് API-യുടെ റെസ്പോൺസ് അനുസരിച്ച് മാറ്റാം)
+            const videoUrl = res.data.result.download_url || res.data.result;
 
             await sock.sendMessage(jid, { 
-                video: fs.readFileSync(outputPath), 
+                video: { url: videoUrl }, 
                 mimetype: 'video/mp4', 
                 caption: '*🎌 KIRA INSTA DOWNLOADER 🎌*' 
             }, { quoted: msg });
@@ -72,8 +46,6 @@ module.exports = {
             console.error("Insta Error:", err);
             await sock.sendMessage(jid, { text: "❌ *Download failed!*" }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: "❌", key: msg.key } });
-        } finally {
-            if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
         }
     }
 };

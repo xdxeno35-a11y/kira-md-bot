@@ -1,9 +1,5 @@
-// plugins/yt.js - KIRA X MD (YouTube video downloader)
-const { exec } = require('child_process');
-const util = require('util');
-const execPromise = util.promisify(exec);
-const fs = require('fs');
-const path = require('path');
+const { downloadVideo } = require('../lib/yt');
+const axios = require('axios');
 
 module.exports = {
     name: 'yt',
@@ -16,33 +12,32 @@ module.exports = {
         const jid = msg.key.remoteJid;
         const url = (args && Array.isArray(args) ? args.join(' ') : '').trim();
 
-        if (!url) {
-            await sock.sendMessage(jid, { react: { text: "❌", key: msg.key } });
-            return;
+        if (!url || !url.includes('youtube.com')) {
+            return await sock.sendMessage(jid, { text: "❌ *Please provide a valid YouTube URL!*" }, { quoted: msg });
         }
 
         await sock.sendMessage(jid, { react: { text: "📥", key: msg.key } });
-
-        const tempDir = path.join(__dirname, '../temp');
-        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-        const outputPath = path.join(tempDir, `yt_${Date.now()}.mp4`);
-
-        const ytDlpPath = path.join(__dirname, '../yt-dlp.exe');
-        const cookiePath = path.join(__dirname, '../cookies.txt');
-        const cookieFlag = fs.existsSync(cookiePath) ? ` --cookies "${cookiePath}"` : '';
-        const command = `"${ytDlpPath}" -f bestvideo+bestaudio --merge-output-format mp4 -o "${outputPath}" "${url}"${cookieFlag} --js-runtime node`;
+        const statusMsg = await sock.sendMessage(jid, { text: `📥 *Downloading video...*` });
 
         try {
-            await execPromise(command, { timeout: 90000 });
-            if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 10000) throw new Error();
+            // API ഉപയോഗിച്ച് വീഡിയോ ഡൗൺലോഡ് ലിങ്ക് എടുക്കുന്നു
+            const video = await downloadVideo(url);
+            
+            // നേരിട്ട് ബഫർ എടുക്കുന്നു
+            const { data: buffer } = await axios.get(video.path, { responseType: 'arraybuffer' });
 
-            const buffer = fs.readFileSync(outputPath);
-            await sock.sendMessage(jid, { video: buffer, mimetype: 'video/mp4', caption: 'KIRA X MD' });
+            await sock.sendMessage(jid, { 
+                video: buffer, 
+                mimetype: 'video/mp4', 
+                caption: '*🎌 KIRA X MD YT DOWNLOADER 🎌*' 
+            }, { quoted: msg });
+            
+            await sock.sendMessage(jid, { text: `✅ *Video sent*`, edit: statusMsg.key });
             await sock.sendMessage(jid, { react: { text: "✅", key: msg.key } });
         } catch (err) {
+            console.error(err);
+            await sock.sendMessage(jid, { text: `❌ *Failed to download!*`, edit: statusMsg.key });
             await sock.sendMessage(jid, { react: { text: "❌", key: msg.key } });
-        } finally {
-            if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
         }
     }
 };
