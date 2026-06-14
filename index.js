@@ -7,22 +7,17 @@ const {
     fetchLatestBaileysVersion
 } = require("@whiskeysockets/baileys");
 
+const qrcode = require("qrcode-terminal");
 const P = require("pino");
+const http = require("http");
 
 const { commands, loadPlugins } = require("./lib/plugins");
 
 loadPlugins();
-
 global.commands = commands;
 
-// 🚀 SPEED OPTIMIZATION: Command Map for Instant Lookup
-const commandMap = new Map();
-commands.forEach(cmd => {
-    commandMap.set(cmd.name, cmd);
-    if (cmd.alias) {
-        cmd.alias.forEach(alias => commandMap.set(alias, cmd));
-    }
-});
+// Railway-യിൽ ബോട്ട് ഉണർന്നിരിക്കാൻ (Keep Alive)
+http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(process.env.PORT || 8080);
 
 async function startKira() {
     const { state, saveCreds } = await useMultiFileAuthState("./session");
@@ -32,28 +27,17 @@ async function startKira() {
         version,
         logger: P({ level: "silent" }),
         auth: state,
-        printQRInTerminal: false, // 🚫 QR കോഡ് ഓഫ് ആക്കി
-        browser: ["Ubuntu", "Chrome", "20.0.04"]
+        printQRInTerminal: true 
     });
 
-    // 🚀 PAIRING CODE LOGIC
+    // പെയറിങ് കോഡ് ലോജിക്
     if (!sock.authState.creds.registered) {
-        const phoneNumber = process.env.BOT_NUMBER; 
-        
+        const phoneNumber = process.env.BOT_NUMBER;
         if (phoneNumber) {
             setTimeout(async () => {
-                try {
-                    let code = await sock.requestPairingCode(phoneNumber);
-                    code = code?.match(/.{1,4}/g)?.join("-") || code;
-                    console.log(`\n=========================================`);
-                    console.log(`🔢 നിന്റെ PAIRING CODE ഇതാണ്: ${code}`);
-                    console.log(`=========================================\n`);
-                } catch (err) {
-                    console.log("Pairing code error:", err);
-                }
+                let code = await sock.requestPairingCode(phoneNumber.replace(/[^0-9]/g, ''));
+                console.log("\n🔑 *YOUR PAIRING CODE:* " + code + "\n");
             }, 3000);
-        } else {
-            console.log("\n⚠️ ശ്രദ്ധിക്കുക: BOT_NUMBER വേരിയബിൾ പാനലിൽ നൽകിയിട്ടില്ല!\n");
         }
     }
 
@@ -61,31 +45,13 @@ async function startKira() {
         const { connection, lastDisconnect } = update;
 
         if (connection === "open") {
-            console.log(`
-╔══════════════════════════════════════════════════════╗
-║                                                      ║
-║    ⚡ KIRA X MD - SYSTEM ONLINE - [PREMIUM]          ║
-║    ────────────────────────────────────────          ║
-║    ◈ Status: Encrypted & Secure                      ║
-║    ◈ Version: 1.0.0 (Stable)                         ║
-║    ◈ Support: https://chat.whatsapp.com/C3hbXjblNLiF7CoDYJ8lwY ║
-║                                                      ║
-╚══════════════════════════════════════════════════════╝
-            `);
+            console.log("✅ KIRA X MD Connected Successfully!");
         }
 
         if (connection === "close") {
-            console.log("⚠️ Connection Closed");
-            const shouldReconnect =
-                lastDisconnect?.error?.output?.statusCode !==
-                DisconnectReason.loggedOut;
-
-            if (shouldReconnect) {
-                console.log("🔄 Reconnecting in 5 seconds...");
-                setTimeout(() => startKira(), 5000);
-            } else {
-                console.log("❌ Logged Out. Delete session and try again.");
-            }
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) startKira();
+            else console.log("❌ Logged Out. Delete session folder and scan again.");
         }
     });
 
@@ -94,7 +60,7 @@ async function startKira() {
     sock.ev.on("messages.upsert", async ({ messages }) => {
         try {
             const msg = messages;
-            if (!msg.message || msg.key.remoteJid === 'status@broadcast') return;
+            if (!msg.message) return;
 
             const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
             const prefix = process.env.PREFIX || ".";
@@ -104,20 +70,13 @@ async function startKira() {
             const commandName = text.slice(prefix.length).trim().split(" ").toLowerCase();
             const args = text.slice(prefix.length + commandName.length).trim().split(/ +/).filter(Boolean);
 
-            const command = commandMap.get(commandName);
-            if (!command) return;
+            const command = commands.find(cmd => cmd.name === commandName || (cmd.alias && cmd.alias.includes(commandName)));
 
-            await command.execute(sock, msg, args);
+            if (command) await command.execute(sock, msg, args);
         } catch (err) {
-            console.error("Command Error:", err);
+            console.log("Command Error:", err);
         }
     });
 }
 
 startKira();
-
-// 🚀 RAILWAY FIX: Web Server
-const http = require('http');
-http.createServer((req, res) => res.end('Kira Bot is Alive! ⚡')).listen(process.env.PORT || 8080, () => {
-    console.log("🌐 Web server is running...");
-});
