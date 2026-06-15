@@ -21,7 +21,9 @@ module.exports = {
         try {
             await sock.sendMessage(jid, { react: { text: "🎧", key: msg.key } });
 
-            const mediaBuffer = await downloadMediaMessage({ message: quoted }, "buffer", {}, { logger: console });
+            // logger ഒഴിവാക്കി സൈലന്റ് ആയി ഡൗൺലോഡ് ചെയ്യുന്നു
+            const mediaBuffer = await downloadMediaMessage({ message: quoted }, "buffer", {}, {});
+            if (!mediaBuffer) throw new Error("Failed to download media buffer from WhatsApp.");
 
             const form = new FormData();
             form.append("reqtype", "fileupload");
@@ -34,26 +36,34 @@ module.exports = {
 
             const mediaUrl = await uploadRes.text();
 
-            if (!mediaUrl.startsWith("http")) throw new Error("Audio upload failed");
+            if (!mediaUrl.startsWith("http")) throw new Error(`Audio upload failed. Catbox returned: ${mediaUrl}`);
 
-            const identifyRes = await (await fetch(`https://jerrycoder.oggyapi.workers.dev/tool/identify?url=${encodeURIComponent(mediaUrl)}`)).json();
+            const apiUrl = `https://jerrycoder.oggyapi.workers.dev/tool/identify?url=${encodeURIComponent(mediaUrl)}`;
+            const identifyRes = await (await fetch(apiUrl)).json();
 
-            if (identifyRes.status !== "success") throw new Error("Could not identify the song.");
+            if (identifyRes.status !== "success") throw new Error("API could not identify the song.");
 
-            const { title, artist, image, shazam_url, album, release_date, genre } = identifyRes.result;
+            const resData = identifyRes.result;
+            const title = resData.title;
+            const artist = resData.artist;
+            const album = resData.Album; 
+            const releaseDate = resData["Released on"]; 
+            const genre = resData.Genres; 
+            const label = resData.Label; 
+            const image = resData.image;
+            const shazamUrl = resData.shazam_url;
             
-            // 💡 ഡൈനാമിക് ആയി ക്യാപ്ഷൻ സെറ്റ് ചെയ്യുന്നു
             let caption = `╭──『 🎵 *SONG IDENTIFIED* 』──⊷\n│\n`;
             caption += `│ 📀 *Title :* ${title || "Unknown"}\n`;
             caption += `│ 🎤 *Artist :* ${artist || "Unknown"}\n`;
             
-            // വിവരങ്ങൾ ഉണ്ടെങ്കിൽ മാത്രം ആ വരികൾ ചേർക്കും
             if (album && album !== "Unknown Album") caption += `│ 💿 *Album :* ${album}\n`;
-            if (release_date) caption += `│ 📅 *Released :* ${release_date}\n`;
-            if (genre) caption += `│ 🎼 *Genre :* ${genre}\n`;
+            if (releaseDate && releaseDate !== "Unknown") caption += `│ 📅 *Released :* ${releaseDate}\n`;
+            if (genre && genre !== "NotFound" && genre !== "Unknown") caption += `│ 🎼 *Genre :* ${genre}\n`;
+            if (label && label !== "Unknown") caption += `│ 🏢 *Label :* ${label}\n`;
             
             caption += `│\n╰──────────────⊷\n\n`;
-            if (shazam_url) caption += `🔗 *Listen on Shazam:*\n${shazam_url}`;
+            if (shazamUrl) caption += `🔗 *Listen on Shazam:*\n${shazamUrl}`;
 
             await sock.sendMessage(jid, { 
                 image: { url: image || "https://telegra.ph/file/0c32688031d27944062a7.jpg" }, 
@@ -63,7 +73,7 @@ module.exports = {
             await sock.sendMessage(jid, { react: { text: "✅", key: msg.key } });
 
         } catch (err) {
-            console.error("Find Error:", err);
+            console.error("Find Command Error:", err.message); // എറർ മാത്രം ടെർമിനലിൽ കാണിക്കും
             await sock.sendMessage(jid, { 
                 text: `╭──『 ❌ *ERROR* 』──⊷\n│ ${err.message}\n╰──────────────⊷` 
             }, { quoted: msg });

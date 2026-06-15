@@ -19,26 +19,26 @@ module.exports = {
         const statusMsg = await sock.sendMessage(jid, { text: `📥 *Downloading TikTok video...*` });
 
         try {
-            // API എൻഡ്‌പോയിന്റ് (TikTok-ന് സാധാരണയായി 'tiktok' എന്ന് തന്നെയാണ് ഉപയോഗിക്കാറുള്ളത്)
-            const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/tiktok?url=${encodeURIComponent(url)}`;
+            // നീ തന്ന EliteProTech API ലിങ്ക്
+            const apiUrl = `https://eliteprotech-apis.zone.id/tiktok?url=${encodeURIComponent(url)}`;
             const res = await axios.get(apiUrl);
             
-            // API-യിൽ നിന്ന് വീഡിയോ ലിങ്ക് എടുക്കുന്നു
-            const videoUrl = res.data.result.noWatermark || res.data.result.video;
-            
-            const { data: buffer } = await axios.get(videoUrl, { responseType: 'arraybuffer' });
+            // ലോഗിൽ കണ്ടതനുസരിച്ച് ലിങ്ക് എടുക്കുന്നു (MP4 HD ആണ് ബെസ്റ്റ് ക്വാളിറ്റി)
+            const videoUrl = res.data.mp4_hd || res.data.mp4;
 
+            if (!videoUrl) throw new Error("Could not find video URL in response.");
+            
             await sock.sendMessage(jid, { 
-                video: buffer, 
+                video: { url: videoUrl }, 
                 mimetype: 'video/mp4', 
-                caption: '*🎌 KIRA X MD TIKTOK DOWNLOADER 🎌*' 
+                caption: `*🎌 KIRA X MD TIKTOK DOWNLOADER 🎌*\n\n*Title:* ${res.data.title || 'N/A'}` 
             }, { quoted: msg });
             
             await sock.sendMessage(jid, { text: `✅ *TikTok video sent*`, edit: statusMsg.key });
             await sock.sendMessage(jid, { react: { text: "✅", key: msg.key } });
         } catch (err) {
-            console.error(err);
-            await sock.sendMessage(jid, { text: `❌ *Failed to download!*`, edit: statusMsg.key });
+            console.error("TikTok Error:", err.message);
+            await sock.sendMessage(jid, { text: `❌ *Failed!* \nError: ${err.message}`, edit: statusMsg.key });
             await sock.sendMessage(jid, { react: { text: "❌", key: msg.key } });
         }
     }

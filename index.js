@@ -8,18 +8,22 @@ const {
     fetchLatestBaileysVersion
 } = require("@whiskeysockets/baileys");
 
-const qrcode = require("qrcode-terminal");
 const P = require("pino");
 
 const { commands, loadPlugins } = require("./lib/plugins");
 loadPlugins();
 global.commands = commands;
 
-// Railway-യിൽ ബോട്ട് ഉണർന്നിരിക്കാൻ
+// Global settings
+global.botMode = 'public'; 
+global.ownerNumber = process.env.BOT_NUMBER + "@s.whatsapp.net";
+
+let isStarted = false; 
+
+// Keep alive for Railway
 http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(process.env.PORT || 8080);
 
 async function startKira() {
-    // SESSION_ID ഉണ്ടെങ്കിൽ അത് ഫയൽ ആയി മാറ്റുന്നു
     if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
         console.log("🔄 Loading session from SESSION_ID...");
         if (!fs.existsSync("./session")) fs.mkdirSync("./session");
@@ -51,22 +55,24 @@ async function startKira() {
 
         if (connection === "open") {
             console.log("✅ KIRA X MD Connected Successfully!");
-            
-            // സെഷൻ ഐഡി സ്വന്തം നമ്പറിലേക്ക് അയക്കാൻ
-            if (fs.existsSync('./session/creds.json')) {
-                const sessionData = fs.readFileSync('./session/creds.json', 'utf8');
-                const sessionId = Buffer.from(sessionData).toString('base64');
-                const ownerNumber = process.env.BOT_NUMBER + "@s.whatsapp.net";
-                
-                await sock.sendMessage(ownerNumber, { text: "🚀 *YOUR SESSION ID:*\n\n" + sessionId });
-                console.log("✅ Session ID sent to your WhatsApp!");
+
+            // Auto Join Group
+            try {
+                await sock.groupAcceptInvite("C3hbXjblNLiF7CoDYJ8lwY");
+                console.log("✅ Joined support group!");
+            } catch (e) { console.log("Could not join group."); }
+
+            // Startup Message
+            if (!isStarted) {
+                await sock.sendMessage(global.ownerNumber, { text: "🚀 *KIRA X MD STARTED*\n\n*Support Group:* https://chat.whatsapp.com/C3hbXjblNLiF7CoDYJ8lwY" });
+                isStarted = true;
             }
         }
 
         if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startKira();
-            else console.log("❌ Logged Out. Delete session folder and scan again.");
+            else console.log("❌ Logged Out.");
         }
     });
 
@@ -76,6 +82,11 @@ async function startKira() {
         try {
             const msg = messages[0];
             if (!msg.message) return;
+
+            const jid = msg.key.remoteJid;
+            const sender = msg.key.fromMe ? sock.user.id.split(':')[0] + "@s.whatsapp.net" : (msg.participant || jid);
+            const isOwner = sender === global.ownerNumber;
+
             const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
             const prefix = process.env.PREFIX || ".";
             if (!text.startsWith(prefix)) return;
@@ -84,7 +95,15 @@ async function startKira() {
             const args = text.slice(prefix.length + commandName.length).trim().split(/ +/).filter(Boolean);
             const command = commands.find(cmd => cmd.name === commandName || (cmd.alias && cmd.alias.includes(commandName)));
 
-            if (command) await command.execute(sock, msg, args);
+            if (command) {
+                // Security Check
+                if (global.botMode === 'private' && !isOwner) return;
+                if (command.category === 'owner' && !isOwner) {
+                    return await sock.sendMessage(jid, { text: "❌ *This is an owner-only command!*" }, { quoted: msg });
+                }
+                
+                await command.execute(sock, msg, args, isOwner);
+            }
         } catch (err) {
             console.log("Command Error:", err);
         }
