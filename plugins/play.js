@@ -9,13 +9,14 @@ module.exports = {
     usage: '.play <song name or link>',
 
     async execute(sock, msg, args) {
+
         const jid = msg.key.remoteJid;
-        const query = (args && Array.isArray(args) ? args.join(' ') : '').trim();
+        const query = (Array.isArray(args) ? args.join(' ') : '').trim();
 
         if (!query) {
             return await sock.sendMessage(
                 jid,
-                { text: '❌ *What song do you want to play?*' },
+                { text: "❌ *Give a song name or YouTube link*" },
                 { quoted: msg }
             );
         }
@@ -25,139 +26,118 @@ module.exports = {
         });
 
         try {
-            console.log("========== PLAY COMMAND ==========");
+            console.log("\n========== PLAY CMD ==========");
             console.log("Query:", query);
 
-            let url = '';
+            let url;
 
+            // YouTube link detection
             const ytRegex =
-                /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+                /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/.*(?:v=|\/)([a-zA-Z0-9_-]{11})/;
 
             const match = query.match(ytRegex);
 
             if (match) {
                 url = `https://youtu.be/${match[1]}`;
-                console.log("YouTube URL detected:", url);
+                console.log("Direct URL:", url);
             } else {
                 console.log("Searching YouTube...");
 
-                const searchResults = await ytSearch(query);
+                const search = await ytSearch(query);
 
-                console.log(
-                    "Videos found:",
-                    searchResults?.videos?.length || 0
-                );
-
-                const video = searchResults?.videos?.find(v => v.url);
-
-                if (!video || !video.url) {
-                    throw new Error("No valid video found.");
+                if (!search?.videos?.length) {
+                    throw new Error("No results found");
                 }
+
+                const video = search.videos[0];
 
                 url = video.url;
 
-                console.log("Selected video:", video.title);
-                console.log("Video URL:", url);
+                console.log("Selected:", video.title);
+                console.log("URL:", url);
             }
 
             await sock.sendMessage(jid, {
                 react: { text: "📥", key: msg.key }
             });
 
-            let audioUrl = '';
+            console.log("Fetching audio from APIs...");
 
             const apis = [
                 `https://jerrycoder.oggyapi.workers.dev/down/ytmp3-v1?url=${encodeURIComponent(url)}`,
-                `https://jerrycoder.oggyapi.workers.dev/down/ytmp3?url=${encodeURIComponent(url)}`,
                 `https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(url)}`,
                 `https://eliteprotech-apis.zone.id/ytdown?format=mp3&url=${encodeURIComponent(url)}`
             ];
 
-            const axiosConfig = {
-                timeout: 15000,
-                headers: {
-                    'User-Agent':
-                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36'
-                }
-            };
+            let audioUrl = null;
 
-            for (let i = 0; i < apis.length; i++) {
+            for (let api of apis) {
                 try {
-                    console.log(`Trying API ${i + 1}:`, apis[i]);
+                    console.log("Trying:", api);
 
-                    const res = await axios.get(apis[i], axiosConfig);
+                    const res = await axios.get(api, {
+                        timeout: 15000
+                    });
 
-                    console.log(
-                        `API ${i + 1} Response:`,
-                        JSON.stringify(res.data)
-                    );
+                    const data = res.data;
 
-                    const tempUrl =
-                        res.data?.data?.dl ||
-                        res.data?.url ||
-                        res.data?.result?.download_url ||
-                        res.data?.result?.audio ||
-                        res.data?.result;
+                    audioUrl =
+                        data?.data?.dl ||
+                        data?.url ||
+                        data?.result?.download_url ||
+                        data?.result?.audio ||
+                        data?.result;
 
-                    console.log("Extracted URL:", tempUrl);
-
-                    if (
-                        tempUrl &&
-                        typeof tempUrl === "string" &&
-                        tempUrl.startsWith("http")
-                    ) {
-                        audioUrl = tempUrl;
-                        console.log("Valid audio URL found.");
+                    if (audioUrl && typeof audioUrl === "string") {
+                        console.log("Audio URL found:", audioUrl);
                         break;
                     }
 
                 } catch (e) {
-                    console.error(`API ${i + 1} FAILED`);
-                    console.error("URL:", apis[i]);
-                    console.error("MESSAGE:", e.message);
-                    console.error("STATUS:", e.response?.status);
-                    console.error("DATA:", e.response?.data);
+                    console.log("API failed:", e.message);
                 }
             }
 
             if (!audioUrl) {
-                throw new Error("All servers busy or no valid audio URL returned.");
+                throw new Error("No audio URL found from APIs");
             }
 
-            console.log("Final Audio URL:", audioUrl);
+            console.log("Downloading audio buffer...");
+
+            // ⭐ IMPORTANT FIX: download file first (NO STREAM LINK)
+            const audioBuffer = await axios.get(audioUrl, {
+                responseType: "arraybuffer",
+                timeout: 20000
+            });
+
             console.log("Sending audio...");
 
             await sock.sendMessage(
                 jid,
                 {
-                    audio: { url: audioUrl },
-                    mimetype: 'audio/mpeg',
+                    audio: Buffer.from(audioBuffer.data),
+                    mimetype: "audio/mpeg",
                     ptt: false
                 },
                 { quoted: msg }
             );
 
-            console.log("Audio sent successfully.");
+            console.log("Audio sent successfully");
 
             await sock.sendMessage(jid, {
                 react: { text: "🎧", key: msg.key }
             });
 
         } catch (err) {
-            console.error("========== PLAY ERROR ==========");
+            console.error("\n========== PLAY ERROR ==========");
             console.error("MESSAGE:", err.message);
             console.error("STACK:", err.stack);
-            console.error("FULL ERROR:", err);
 
-            try {
-                await sock.sendMessage(
-                    jid,
-                    {
-                        text: `❌ Error: ${err.message}`
-                    },
-                    { quoted: msg }
-                );
-            } catch {}
+            await sock.sendMessage(
+                jid,
+                { text: `❌ Error: ${err.message}` },
+                { quoted: msg }
+            );
 
             await sock.sendMessage(jid, {
                 react: { text: "❌", key: msg.key }
