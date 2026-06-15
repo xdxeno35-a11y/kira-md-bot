@@ -50,7 +50,7 @@ async function startKira() {
 
     const sock = makeWASocket({
         version,
-        logger: P({ level: "silent" }),
+        logger: P({ level: "debug" }),
         auth: state,
         printQRInTerminal: true 
     });
@@ -89,37 +89,42 @@ async function startKira() {
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
-        try {
-            // ✅ FIX: take the first message from the array
-            const msg = messages[0];
-            if (!msg.message) return;
+    try {
+        // ✅ FIX: take the first message from the array
+        const msg = messages[0];
+        if (!msg.message) return;
 
-            // Log for debugging
-            console.log("📩 Message from", msg.key.remoteJid, ":", msg.message?.conversation || msg.message?.extendedTextMessage?.text);
+        // Log for debugging
+        console.log("📩 Message from", msg.key.remoteJid, ":", msg.message?.conversation || msg.message?.extendedTextMessage?.text);
 
-            const jid = msg.key.remoteJid;
-            const sender = msg.key.fromMe ? sock.user.id.split(':')[0] + "@s.whatsapp.net" : (msg.participant || jid);
-            const isOwner = sender === global.ownerNumber;
+        const jid = msg.key.remoteJid;
+        const sender = msg.key.fromMe ? sock.user.id.split(':')[0] + "@s.whatsapp.net" : (msg.participant || jid);
+        const isOwner = sender === global.ownerNumber;
 
-            const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
-            const prefix = process.env.PREFIX || ".";
-            if (!text.startsWith(prefix)) return;
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+        const prefix = process.env.PREFIX || ".";
+        if (!text.startsWith(prefix)) return;
 
-            const args = text.slice(prefix.length).trim().split(/ +/);
-            const commandName = args.shift().toLowerCase();
-            const command = commands.find(cmd => cmd.name === commandName || (cmd.alias && cmd.alias.includes(commandName)));
+        const args = text.slice(prefix.length).trim().split(/ +/);
+        const commandName = args.shift().toLowerCase();
+        const command = commands.find(cmd => cmd.name === commandName || (cmd.alias && cmd.alias.includes(commandName)));
 
-            if (command) {
-                if (global.botMode === 'private' && !isOwner) return;
-                if (command.category === 'owner' && !isOwner) {
-                    return await sock.sendMessage(jid, { text: "❌ *Owner only!*" }, { quoted: msg });
-                }
-                await command.execute(sock, msg, args, isOwner);
+        if (command) {
+            if (global.botMode === 'private' && !isOwner) return;
+            if (command.category === 'owner' && !isOwner) {
+                return await sock.sendMessage(jid, { text: "❌ *Owner only!*" }, { quoted: msg });
             }
-        } catch (err) {
-            console.log("Command Error:", err);
+            await command.execute(sock, msg, args, isOwner);
+        }
+     } catch (err) {
+            console.error("========== COMMAND ERROR ==========");
+            console.error("MESSAGE:", err?.message);
+            console.error("STACK:", err?.stack);
+            console.error("FULL ERROR:", err);
+            console.error("===================================");
         }
     });
+
 }
 
 startKira();
