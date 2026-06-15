@@ -99,14 +99,15 @@ module.exports = {
                         data?.result?.url ||
                         data?.result;
 
-                    if (
-                        audioUrl &&
-                        typeof audioUrl === "string" &&
-                        audioUrl.startsWith("http")
-                    ) {
-                        console.log("Audio URL:", audioUrl);
-                        break;
-                    }
+                   if (
+    audioUrl &&
+    typeof audioUrl === "string" &&
+    audioUrl.startsWith("http")
+) {
+    console.log("Audio URL:", audioUrl);
+    console.log("FINAL AUDIO URL:", audioUrl);
+    break;
+}
 
                 } catch (e) {
                     console.log("API Failed:", e.message);
@@ -118,15 +119,23 @@ module.exports = {
             }
 
             console.log("Checking audio URL...");
+console.log("FINAL AUDIO URL:", audioUrl);
 
-            const check = await axios.get(audioUrl, {
-                responseType: "stream",
-                timeout: 15000,
-                validateStatus: () => true
-            });
+const check = await axios.get(audioUrl, {
+    responseType: "stream",
+    timeout: 15000,
+    maxRedirects: 10,
+    validateStatus: () => true,
+    headers: {
+        "User-Agent": "Mozilla/5.0"
+    }
+});
 
-            console.log("Audio URL Status:", check.status);
-
+console.log("Audio URL Status:", check.status);
+console.log(
+    "Final Response URL:",
+    check.request?.res?.responseUrl || audioUrl
+);
             if (check.status !== 200) {
                 throw new Error(
                     `Audio link returned ${check.status}`
