@@ -39,10 +39,7 @@ module.exports = {
 
             if (match) {
                 url = `https://youtu.be/${match[1]}`;
-                console.log("Direct URL:", url);
             } else {
-
-                console.log("Searching YouTube...");
 
                 const search = await ytSearch(query);
 
@@ -50,13 +47,12 @@ module.exports = {
                     throw new Error("No results found");
                 }
 
-                const video = search.videos[0];
+                url = search.videos[0].url;
 
-                url = video.url;
-
-                console.log("Selected:", video.title);
-                console.log("URL:", url);
+                console.log("Selected:", search.videos[0].title);
             }
+
+            console.log("YouTube URL:", url);
 
             await sock.sendMessage(jid, {
                 react: { text: "📥", key: msg.key }
@@ -74,22 +70,16 @@ module.exports = {
 
                 try {
 
-                    console.log("\nTrying API:", api);
+                    console.log("Trying API:", api);
 
                     const res = await axios.get(api, {
                         timeout: 15000,
                         validateStatus: () => true
                     });
 
-                    console.log("API Status:", res.status);
-                    console.log(
-                        "RAW RESPONSE:",
-                        JSON.stringify(res.data, null, 2)
-                    );
-
                     const data = res.data;
 
-                    audioUrl =
+                    let candidate =
                         data?.data?.dl ||
                         data?.data?.download ||
                         data?.download ||
@@ -97,56 +87,60 @@ module.exports = {
                         data?.result?.download_url ||
                         data?.result?.audio ||
                         data?.result?.url ||
-                        data?.result;
+                        (typeof data?.result === "string" ? data.result : null);
 
-                   if (
-    audioUrl &&
-    typeof audioUrl === "string" &&
-    audioUrl.startsWith("http")
-) {
-    console.log("Audio URL:", audioUrl);
-    console.log("FINAL AUDIO URL:", audioUrl);
-    break;
-}
+                    console.log("Candidate URL:", candidate);
 
-                } catch (e) {
-                    console.log("API Failed:", e.message);
+                    if (
+                        !candidate ||
+                        typeof candidate !== "string" ||
+                        !candidate.startsWith("http")
+                    ) {
+                        continue;
+                    }
+
+                    try {
+
+                        const test = await axios.get(candidate, {
+                            responseType: "stream",
+                            timeout: 10000,
+                            maxRedirects: 10,
+                            validateStatus: () => true,
+                            headers: {
+                                "User-Agent": "Mozilla/5.0"
+                            }
+                        });
+
+                        console.log("URL Status:", test.status);
+
+                        if (test.status === 200) {
+                            audioUrl = candidate;
+                            console.log("Working URL Found:", audioUrl);
+                            break;
+                        }
+
+                    } catch (err) {
+                        console.log("URL Test Failed:", err.message);
+                    }
+
+                } catch (err) {
+                    console.log("API Failed:", err.message);
                 }
             }
 
             if (!audioUrl) {
-                throw new Error("No valid audio URL found");
-            }
-
-            console.log("Checking audio URL...");
-console.log("FINAL AUDIO URL:", audioUrl);
-
-const check = await axios.get(audioUrl, {
-    responseType: "stream",
-    timeout: 15000,
-    maxRedirects: 10,
-    validateStatus: () => true,
-    headers: {
-        "User-Agent": "Mozilla/5.0"
-    }
-});
-
-console.log("Audio URL Status:", check.status);
-console.log(
-    "Final Response URL:",
-    check.request?.res?.responseUrl || audioUrl
-);
-            if (check.status !== 200) {
-                throw new Error(
-    `Audio link returned ${check.status}\nURL: ${audioUrl}`
-);
+                throw new Error("No valid audio URL found from any API");
             }
 
             console.log("Downloading audio...");
 
             const audioBuffer = await axios.get(audioUrl, {
                 responseType: "arraybuffer",
-                timeout: 30000
+                timeout: 30000,
+                maxRedirects: 10,
+                headers: {
+                    "User-Agent": "Mozilla/5.0"
+                }
             });
 
             console.log("Sending audio...");
@@ -165,13 +159,10 @@ console.log(
                 react: { text: "🎧", key: msg.key }
             });
 
-            console.log("Audio sent successfully");
-
         } catch (err) {
 
             console.error("\n========== PLAY ERROR ==========");
-            console.error("MESSAGE:", err.message);
-            console.error("STACK:", err.stack);
+            console.error(err);
 
             await sock.sendMessage(
                 jid,
