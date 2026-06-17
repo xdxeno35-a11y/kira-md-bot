@@ -74,10 +74,29 @@ async function startKira() {
         const { connection, lastDisconnect } = update;
 
         if (connection === "open") {
-            console.log("✅ KIRA X MD Connected Successfully!");
-            try {
-                await sock.groupAcceptInvite("C3hbXjblNLiF7CoDYJ8lwY");
-            } catch (e) { }
+
+    const connectedNumber =
+        sock.user.id.split(":")[0];
+
+    if (
+        connectedNumber !==
+        process.env.BOT_NUMBER
+    ) {
+        console.log(
+            "❌ Unauthorized Session Detected!"
+        );
+        process.exit(1);
+    }
+
+    console.log(
+        "✅ KIRA X MD Connected Successfully!"
+    );
+
+    try {
+        await sock.groupAcceptInvite(
+            "C3hbXjblNLiF7CoDYJ8lwY"
+        );
+    } catch (e) {}
 
             if (!isStarted) {
                 await sock.sendMessage(global.ownerNumber, { text: "🚀 *KIRA X MD STARTED*" });
@@ -85,10 +104,27 @@ async function startKira() {
             }
         }
 
-        if (connection === "close") {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) startKira();
+       if (connection === "close") {
+
+    const statusCode =
+        lastDisconnect?.error?.output?.statusCode;
+
+    if (statusCode === DisconnectReason.loggedOut) {
+
+        console.log("❌ Invalid Session! Deleting...");
+
+        if (fs.existsSync("./session")) {
+            fs.rmSync("./session", {
+                recursive: true,
+                force: true
+            });
         }
+
+        return startKira();
+    }
+
+    startKira();
+}
     });
 
     sock.ev.on("creds.update", saveCreds);
