@@ -50,19 +50,27 @@ http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(PORT, '0.0.0
 
 async function startKira() {
     
-    // ===== DIRECT API SESSION FETCHING ON START =====
+    // ===== DYNAMIC API SESSION FETCHING FROM RAILWAY ENV =====
     if (!fs.existsSync("./session/creds.json")) {
-        console.log("🔄 Initializing KIRA Session Fetch from Target URL...");
+        const envSessionId = process.env.SESSION_ID;
+
+        if (!envSessionId) {
+            console.log("❌ Railway Error: SESSION_ID variable is completely missing in Railway Variables!");
+            console.log("🔄 Waiting 15 seconds before checking again...");
+            await global.sleep(15000);
+            return startKira();
+        }
+
+        console.log(`🔄 Fetching KIRA Session using ID from Railway Env...`);
 
         if (!fs.existsSync("./session")) {
             fs.mkdirSync("./session");
         }
 
         try {
-            // Directly targeting the exact URL provided
-            const response = await axios.get(
-                "https://kira-session-generator-api.onrender.com/session?id=KIRA~0RdIKwFLtzHHxTjAWWJdOrh0f"
-            );
+            // Automatically appends the dynamic SESSION_ID from Railway Env
+            const targetUrl = `https://kira-session-generator-api.onrender.com/session?id=${envSessionId.trim()}`;
+            const response = await axios.get(targetUrl);
 
             if (response.data && response.data.status) {
                 let credentialsData = typeof response.data.data === 'object' 
@@ -70,19 +78,19 @@ async function startKira() {
                     : response.data.data;
 
                 fs.writeFileSync("./session/creds.json", credentialsData, "utf8");
-                console.log("✅ target Session Loaded Successfully from API!");
+                console.log("✅ Session Loaded Successfully from Railway Environment Variable!");
             } else {
-                console.log("❌ Target URL returned false status (Invalid or Expired on Render Server).");
-                console.log("🔄 Retrying fetch loop in 10 seconds...");
-                await global.sleep(10000);
+                console.log("❌ Render API Error: Provided SESSION_ID is Invalid or Expired.");
+                console.log("🔄 Retrying fetch loop in 15 seconds...");
+                await global.sleep(15000);
                 return startKira();
             }
 
         } catch (err) {
-            console.log("❌ Target URL Fetch Failed:", err.message);
+            console.log("❌ API Fetch Failed (Network or Server Down):", err.message);
             if (fs.existsSync("./session/creds.json")) fs.unlinkSync("./session/creds.json");
-            console.log("🔄 Network retry in 10 seconds...");
-            await global.sleep(10000);
+            console.log("🔄 Retrying in 15 seconds...");
+            await global.sleep(15000);
             return startKira();
         }
     }
@@ -90,7 +98,7 @@ async function startKira() {
     const { state, saveCreds } = await useMultiFileAuthState("./session");
     const { version } = await fetchLatestBaileysVersion();
 
-    // STRICTLY LOGS IN VIA RECOVERY SESSION FILES ONLY (NO PAIRING GENERATORS)
+    // STRICT CONNECTION VIA SESSION ONLY - NO TERM PAIRING
     const sock = makeWASocket({
         version,
         logger: P({ level: "fatal" }),
@@ -103,7 +111,7 @@ async function startKira() {
         const { connection, lastDisconnect } = update;
 
         if (connection === "open") {
-            console.log("✅ KIRA X MD Connected Successfully via Direct Session!");
+            console.log("✅ KIRA X MD Connected Successfully via Dynamic Session!");
             try {
                 await sock.groupAcceptInvite("C3hbXjblNLiF7CoDYJ8lwY");
             } catch (e) { }
@@ -111,7 +119,7 @@ async function startKira() {
             if (!isStarted) {
                 const ownerJid = `${global.ownerNumber}@s.whatsapp.net`;
                 await sock.sendMessage(ownerJid, {
-                    text: `╭━━━〔 KIRA-X-MD 〕━━━⬣\n\n✅ Connected Successfully via Target URL\n\n👤 Owner : Madhav\n🤖 Bot : KIRA-X-MD\n🌐 Repo :\nhttps://github.com/Madhavgkmd/kira-md-bot\n\n📢 Support Group :\nhttps://chat.whatsapp.com/C3hbXjblNLiF7CoDYJ8lwY\n\n╰━━━━━━━━━━━━━━⬣`
+                    text: `╭━━━〔 KIRA-X-MD 〕━━━⬣\n\n✅ Connected Successfully via Railway Variables\n\n👤 Owner : Madhav\n🤖 Bot : KIRA-X-MD\n🌐 Repo :\nhttps://github.com/Madhavgkmd/kira-md-bot\n\n📢 Support Group :\nhttps://chat.whatsapp.com/C3hbXjblNLiF7CoDYJ8lwY\n\n╰━━━━━━━━━━━━━━⬣`
                 }); 
                 isStarted = true;
             }
@@ -123,7 +131,7 @@ async function startKira() {
                 console.log("🔄 Connection closed, reconnecting...");
                 startKira();
             } else {
-                console.log("❌ Session logged out. Clearing storage to trigger fresh download loop...");
+                console.log("❌ Session logged out. Clearing storage to re-fetch from Railway Env...");
                 if (fs.existsSync("./session")) {
                     fs.rmSync("./session", { recursive: true, force: true });
                 }
