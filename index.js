@@ -64,7 +64,6 @@ async function startKira() {
                 throw new Error("Invalid Session ID");
             }
 
-            // Ensures incoming object profiles are structured safely into proper text configurations
             let credentialsData = typeof response.data.data === 'object' 
                 ? JSON.stringify(response.data.data) 
                 : response.data.data;
@@ -79,7 +78,6 @@ async function startKira() {
 
         } catch (err) {
             console.log("❌ Session Load Failed:", err.message);
-            // Delete half-written/corrupted structural data if present
             if (fs.existsSync("./session/creds.json")) fs.unlinkSync("./session/creds.json");
             return; 
         }
@@ -208,4 +206,63 @@ async function startKira() {
                 ? (sock.user.id.split(':')[0] + "@s.whatsapp.net")
                 : (msg.participant || jid);
 
-            const cleanSender = sender.replace(/[^0-9]/g,
+            const cleanSender = sender.replace(/[^0-9]/g, '');
+            const isOwner = cleanSender === global.ownerNumber;
+
+            const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+            const prefix = process.env.PREFIX || ".";
+            const isGroup = jid.endsWith("@g.us");
+
+            // Auto Downloader Route
+            global.autoDlChats = global.autoDlChats || [];
+            global.autoDlAllGroups = global.autoDlAllGroups || false;
+            global.autoDlAllDms = global.autoDlAllDms || false;
+
+            const autoDlEnabled = global.autoDlChats.includes(jid) || (global.autoDlAllGroups && isGroup) || (global.autoDlAllDms && !isGroup);
+
+            if (autoDlEnabled && text && !text.startsWith(prefix)) {
+                try {
+                    await global.sleep(2000);
+
+                    if (/instagram\.com/i.test(text)) {
+                        const insta = commands.find(c => c.name === "insta");
+                        if (insta) return await insta.execute(sock, msg, [text]);
+                    }
+                    if (/facebook\.com|fb\.watch/i.test(text)) {
+                        const fb = commands.find(c => c.name === "fb");
+                        if (fb) return await fb.execute(sock, msg, [text]);
+                    }
+                    if (/youtube\.com|youtu\.be/i.test(text)) {
+                        const ytv = commands.find(c => c.name === "ytv");
+                        if (ytv) return await ytv.execute(sock, msg, [text]);
+                    }
+                } catch (e) {
+                    console.error("AUTO DL ERROR:", e);
+                }
+            } 
+
+            if (!text.startsWith(prefix)) return;
+
+            const args = text.slice(prefix.length).trim().split(/ +/);
+            const commandName = args.shift().toLowerCase();
+            const command = commands.find(cmd => cmd.name === commandName || (cmd.alias && cmd.alias.includes(commandName)));
+
+            if (command) {
+                if (global.botMode === 'private' && !isOwner) return;
+                if (command.category === 'owner' && !isOwner) {
+                    return await sock.sendMessage(jid, { text: "❌ *Owner only!*" }, { quoted: msg });
+                }
+
+                await global.sleep(1500);
+                await command.execute(sock, msg, args, isOwner);
+            }
+        } catch (err) {
+            console.error("========== COMMAND ERROR ==========");
+            console.error("MESSAGE:", err?.message);
+            console.error("STACK:", err?.stack);
+            console.error("===================================");
+        }
+    });
+}
+
+startKira();
