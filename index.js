@@ -44,56 +44,46 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(process.env.PORT || 3000);
 
-console.log("SESSION EXISTS:", !!process.env.SESSION_ID);
+const axios = require("axios");
 
-if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
+async function startKira() {
 
-    console.log("🔄 Loading KIRA Session...");
+    if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
 
-    if (!fs.existsSync("./session")) {
-        fs.mkdirSync("./session");
+        console.log("🔄 Loading KIRA Session...");
+
+        if (!fs.existsSync("./session")) {
+            fs.mkdirSync("./session");
+        }
+
+        const { data } = await axios.get(
+            `https://kira-session-generator-api.onrender.com/session?id=${process.env.SESSION_ID}`
+        );
+
+        if (!data.status) {
+            throw new Error("Invalid Session ID");
+        }
+
+        fs.writeFileSync(
+            "./session/creds.json",
+            data.data
+        );
+
+        console.log("✅ Session Loaded Successfully");
     }
 
-    const response = await axios.get(
-        `https://kira-session-generator-api.onrender.com/session?id=${process.env.SESSION_ID}`
-    );
+    const { state, saveCreds } =
+        await useMultiFileAuthState("./session");
 
-    if (!response.data.status) {
-        throw new Error("Invalid Session ID");
-    }
+    const { state, saveCreds } = await useMultiFileAuthState("./session");
+    const { version } = await fetchLatestBaileysVersion();
 
-    fs.writeFileSync(
-        "./session/creds.json",
-        response.data.data,
-        "utf8"
-    );
-
-    console.log("✅ Session Loaded Successfully");
-}
-}
-
-if (sessionId.startsWith("KIRA~")) {
-    sessionId = sessionId.slice(5);
-}
-
-fs.writeFileSync(
-    "./session/creds.json",
-    Buffer.from(sessionId, "base64").toString()
-);
-    }
-
-    const decoded =
-    Buffer.from(sessionId, "base64").toString();
-
-console.log(
-    "DECODED START:",
-    decoded.substring(0, 100)
-);
-
-fs.writeFileSync(
-    "./session/creds.json",
-    decoded
-);
+    const sock = makeWASocket({
+        version,
+        logger: P({ level: "fatal" }),
+        auth: state,
+        printQRInTerminal: true 
+    });
 
     if (
     !sock.authState.creds.registered &&
@@ -108,102 +98,39 @@ fs.writeFileSync(
         }
     }
 
-   sock.ev.on("connection.update", async (update) => {
+    sock.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect } = update;
 
-    const { connection, lastDisconnect } = update;
-
-    console.log(
-        "Connection Update:",
-        JSON.stringify(update, null, 2)
-    );
-
-    if (connection === "connecting") {
-        console.log("🟡 Connecting...");
-    }
-
-    if (connection === "open") {
-
-        console.log(
-            "✅ KIRA X MD Connected Successfully!"
-        );
-
-        try {
-            await sock.groupAcceptInvite(
-                "C3hbXjblNLiF7CoDYJ8lwY"
-            );
-        } catch {}
-
-        if (!isStarted) {
-
+        if (connection === "open") {
+            console.log("✅ KIRA X MD Connected Successfully!");
             try {
+                await sock.groupAcceptInvite("C3hbXjblNLiF7CoDYJ8lwY");
+            } catch (e) { }
 
-                await sock.sendMessage(
-                    global.ownerNumber,
-                    {
-                        text:
-`╭━━━〔 KIRA-X-MD 〕━━━⬣
+            if (!isStarted) {
+await sock.sendMessage(global.ownerNumber, {
+text: `╭━━━〔 KIRA-X-MD 〕━━━⬣
 
 ✅ Connected Successfully
 
 👤 Owner : Madhav
 🤖 Bot : KIRA-X-MD
-
-📱 Number :
-${sock.user?.id?.split(":")[0] || "Unknown"}
-
-⚡ Status : Online
-🌍 Mode : ${global.botMode}
-
 🌐 Repo :
 https://github.com/Madhavgkmd/kira-md-bot
 
-📢 Support :
+📢 Support Group :
 https://chat.whatsapp.com/C3hbXjblNLiF7CoDYJ8lwY
 
 ╰━━━━━━━━━━━━━━⬣`
-                    }
-                );
-
-                console.log(
-                    "✅ Startup message sent"
-                );
-
-                isStarted = true;
-
-            } catch (err) {
-
-                console.log(
-                    "❌ Startup message failed:",
-                    err
-                );
-
+});                isStarted = true;
             }
         }
-    }
 
-    if (connection === "close") {
-
-        console.log("❌ Connection Closed");
-
-        console.log(
-            "Disconnect Info:",
-            lastDisconnect
-        );
-
-        const shouldReconnect =
-            lastDisconnect?.error?.output?.statusCode !==
-            DisconnectReason.loggedOut;
-
-        if (shouldReconnect) {
-
-            console.log("🔄 Reconnecting...");
-
-            setTimeout(() => {
-                startKira();
-            }, 5000);
+        if (connection === "close") {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) startKira();
         }
-    }
-});
+    });
 
     sock.ev.on("creds.update", saveCreds);
     sock.ev.on("messages.update", async (updates) => {
