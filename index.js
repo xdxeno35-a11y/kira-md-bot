@@ -47,9 +47,9 @@ http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(process.env.
 
 async function startKira() {
     
-    // ===== SAFE API SESSION FETCHING =====
+    // ===== IMPROVED API SESSION FETCHING =====
     if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
-        console.log("🔄 Loading KIRA Session...");
+        console.log("🔄 Fetching KIRA Session from API...");
 
         if (!fs.existsSync("./session")) {
             fs.mkdirSync("./session");
@@ -60,26 +60,20 @@ async function startKira() {
                 `https://kira-session-generator-api.onrender.com/session?id=${process.env.SESSION_ID}`
             );
 
-            if (!response.data.status) {
-                throw new Error("Invalid Session ID");
+            if (response.data && response.data.status) {
+                let credentialsData = typeof response.data.data === 'object' 
+                    ? JSON.stringify(response.data.data) 
+                    : response.data.data;
+
+                fs.writeFileSync("./session/creds.json", credentialsData, "utf8");
+                console.log("✅ Session Loaded Successfully from API!");
+            } else {
+                console.log("⚠️ API returned invalid status. Moving to Pairing Code method...");
             }
 
-            let credentialsData = typeof response.data.data === 'object' 
-                ? JSON.stringify(response.data.data) 
-                : response.data.data;
-
-            fs.writeFileSync(
-                "./session/creds.json",
-                credentialsData,
-                "utf8"
-            );
-
-            console.log("✅ Session Loaded Successfully");
-
         } catch (err) {
-            console.log("❌ Session Load Failed:", err.message);
+            console.log("❌ API Connection Failed. Switching to Pairing Code fallback...");
             if (fs.existsSync("./session/creds.json")) fs.unlinkSync("./session/creds.json");
-            return; 
         }
     }
 
@@ -93,11 +87,18 @@ async function startKira() {
         printQRInTerminal: true 
     });
 
-    // Request Pairing Code if not registered
+    // Request Pairing Code if not registered (Fallback)
     if (!sock.authState.creds.registered && global.ownerNumber) {
+        console.log(`📡 Requesting Pairing Code for: ${global.ownerNumber}`);
         setTimeout(async () => {
-            let code = await sock.requestPairingCode(global.ownerNumber);
-            console.log("\n🔑 *YOUR PAIRING CODE:* " + code + "\n");
+            try {
+                let code = await sock.requestPairingCode(global.ownerNumber);
+                console.log("\n=================================");
+                console.log("🔑 YOUR PAIRING CODE: " + code);
+                console.log("=================================\n");
+            } catch (pairingError) {
+                console.log("❌ Error generating pairing code:", pairingError.message);
+            }
         }, 3000);
     }
 
