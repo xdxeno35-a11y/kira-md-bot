@@ -2,7 +2,7 @@ require("dotenv").config();
 const fs = require('fs');
 const http = require('http');
 const P = require("pino");
-const axios = require("axios"); // Added axios for session fetching
+const axios = require("axios");
 const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -47,7 +47,7 @@ http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(process.env.
 
 async function startKira() {
     
-    // ===== CORRECTED API SESSION FETCHING =====
+    // ===== SAFE API SESSION FETCHING =====
     if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
         console.log("🔄 Loading KIRA Session...");
 
@@ -64,9 +64,14 @@ async function startKira() {
                 throw new Error("Invalid Session ID");
             }
 
+            // Ensures incoming object profiles are structured safely into proper text configurations
+            let credentialsData = typeof response.data.data === 'object' 
+                ? JSON.stringify(response.data.data) 
+                : response.data.data;
+
             fs.writeFileSync(
                 "./session/creds.json",
-                response.data.data,
+                credentialsData,
                 "utf8"
             );
 
@@ -74,7 +79,9 @@ async function startKira() {
 
         } catch (err) {
             console.log("❌ Session Load Failed:", err.message);
-            return; // API crash aayyal execution stop cheyyunnu (to avoid QR generation loop)
+            // Delete half-written/corrupted structural data if present
+            if (fs.existsSync("./session/creds.json")) fs.unlinkSync("./session/creds.json");
+            return; 
         }
     }
 
@@ -144,4 +151,61 @@ async function startKira() {
                         text: `🚨 DELETED MESSAGE\n\n👤 USER:\n${sender}\n\n💬 CHAT:\n${jid}`
                     });
 
-                    await sock.sendMessage(
+                    await sock.sendMessage(ownerJid, { forward: deletedMsg });
+                }
+            }
+        } catch (err) {
+            console.log("ANTI DELETE ERROR:", err);
+        }
+    });
+
+    // Welcome & Goodbye Events
+    global.welcomeChats = global.welcomeChats || [];
+    global.goodbyeChats = global.goodbyeChats || [];
+
+    sock.ev.on("group-participants.update", async (update) => {
+        try {
+            const jid = update.id;
+            const action = update.action;
+
+            for (const participant of update.participants) {
+                const userJid = participant.id || participant;
+
+                if ((action === "add" || action === "join") && global.welcomeChats.includes(jid)) {
+                    await sock.sendMessage(jid, {
+                        text: `🎉 Welcome @${userJid.split("@")[0]} to the group!`,
+                        mentions: [userJid]
+                    });
+                }
+
+                if ((action === "remove" || action === "leave") && global.goodbyeChats.includes(jid)) {
+                    await sock.sendMessage(jid, {
+                        text: `👋 Goodbye @${userJid.split("@")[0]}!`,
+                        mentions: [userJid]
+                    });
+                }
+            }
+        } catch (err) {
+            console.log("WELCOME/GOODBYE ERROR:", err);
+        }
+    });
+
+    // Messages Entry Point
+    sock.ev.on("messages.upsert", async ({ messages }) => {
+        try {
+            const msg = messages[0];
+            if (!msg.message) return;
+
+            if (msg.key?.id) {
+                global.messageStore[msg.key.id] = msg;
+                if (Object.keys(global.messageStore).length > 5000) {
+                    delete global.messageStore[Object.keys(global.messageStore)[0]];
+                }
+            }
+
+            const jid = msg.key.remoteJid;
+            const sender = msg.key.fromMe
+                ? (sock.user.id.split(':')[0] + "@s.whatsapp.net")
+                : (msg.participant || jid);
+
+            const cleanSender = sender.replace(/[^0-9]/g,
