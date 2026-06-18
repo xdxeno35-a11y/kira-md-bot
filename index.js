@@ -44,38 +44,35 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(process.env.PORT || 3000);
 
+const axios = require("axios");
+
 async function startKira() {
+
     if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
-
-    console.log("🔄 Loading KIRA Session...");
-
-    if (!fs.existsSync("./session")) {
-        fs.mkdirSync("./session");
-    }
-
-    try {
 
         const { data } = await axios.get(
             `https://kira-session-generator-api.onrender.com/session?id=${process.env.SESSION_ID}`
         );
-
-        if (!data.status) {
-            throw new Error("Invalid Session ID");
-        }
 
         fs.writeFileSync(
             "./session/creds.json",
             data.data,
             "utf8"
         );
-
-        console.log("✅ Session Loaded Successfully");
-
-    } catch (err) {
-        console.log("❌ Session Load Failed:", err.message);
-        return;
     }
+
+    const { state, saveCreds } =
+        await useMultiFileAuthState("./session");
+
+    const { version } =
+        await fetchLatestBaileysVersion();
+
+    // baki code...
 }
+
+startKira();
+
+
 if (sessionId.startsWith("KIRA~")) {
     sessionId = sessionId.slice(5);
 }
