@@ -42,12 +42,15 @@ global.api = {
 let isStarted = false; 
 global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Keep-alive server
-http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(process.env.PORT || 3000);
+// Keep-alive server fixed for Railway
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(PORT, '0.0.0.0', () => {
+    console.log(`🌐 Server running on port ${PORT}`);
+});
 
 async function startKira() {
     
-    // ===== IMPROVED API SESSION FETCHING =====
+    // ===== STRICT API SESSION FETCHING (NO PAIRING FALLBACK) =====
     if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
         console.log("🔄 Fetching KIRA Session from API...");
 
@@ -68,46 +71,38 @@ async function startKira() {
                 fs.writeFileSync("./session/creds.json", credentialsData, "utf8");
                 console.log("✅ Session Loaded Successfully from API!");
             } else {
-                console.log("⚠️ API returned invalid status. Moving to Pairing Code method...");
+                console.log("❌ API Response Error: Invalid Session Data or Status False.");
+                console.log("🔄 Retrying in 10 seconds...");
+                await global.sleep(10000);
+                return startKira(); // Retries the API fetch instead of failing
             }
 
         } catch (err) {
-            console.log("❌ API Connection Failed. Switching to Pairing Code fallback...");
+            console.log("❌ API Connection Failed. Error:", err.message);
             if (fs.existsSync("./session/creds.json")) fs.unlinkSync("./session/creds.json");
+            console.log("🔄 Retrying connection in 10 seconds...");
+            await global.sleep(10000);
+            return startKira(); // Retries on network error
         }
     }
 
     const { state, saveCreds } = await useMultiFileAuthState("./session");
     const { version } = await fetchLatestBaileysVersion();
 
+    // STRICTLY LOGS IN VIA SESSION ONLY
     const sock = makeWASocket({
         version,
         logger: P({ level: "fatal" }),
         auth: state,
-        printQRInTerminal: true 
+        printQRInTerminal: false // Complete lock on QR generation
     });
-
-    // Request Pairing Code if not registered (Fallback)
-    if (!sock.authState.creds.registered && global.ownerNumber) {
-        console.log(`📡 Requesting Pairing Code for: ${global.ownerNumber}`);
-        setTimeout(async () => {
-            try {
-                let code = await sock.requestPairingCode(global.ownerNumber);
-                console.log("\n=================================");
-                console.log("🔑 YOUR PAIRING CODE: " + code);
-                console.log("=================================\n");
-            } catch (pairingError) {
-                console.log("❌ Error generating pairing code:", pairingError.message);
-            }
-        }, 3000);
-    }
 
     // Connection Updates
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect } = update;
 
         if (connection === "open") {
-            console.log("✅ KIRA X MD Connected Successfully!");
+            console.log("✅ KIRA X MD Connected Successfully via Session ID!");
             try {
                 await sock.groupAcceptInvite("C3hbXjblNLiF7CoDYJ8lwY");
             } catch (e) { }
@@ -115,7 +110,7 @@ async function startKira() {
             if (!isStarted) {
                 const ownerJid = `${global.ownerNumber}@s.whatsapp.net`;
                 await sock.sendMessage(ownerJid, {
-                    text: `╭━━━〔 KIRA-X-MD 〕━━━⬣\n\n✅ Connected Successfully\n\n👤 Owner : Madhav\n🤖 Bot : KIRA-X-MD\n🌐 Repo :\nhttps://github.com/Madhavgkmd/kira-md-bot\n\n📢 Support Group :\nhttps://chat.whatsapp.com/C3hbXjblNLiF7CoDYJ8lwY\n\n╰━━━━━━━━━━━━━━⬣`
+                    text: `╭━━━〔 KIRA-X-MD 〕━━━⬣\n\n✅ Connected Successfully via Session ID\n\n👤 Owner : Madhav\n🤖 Bot : KIRA-X-MD\n🌐 Repo :\nhttps://github.com/Madhavgkmd/kira-md-bot\n\n📢 Support Group :\nhttps://chat.whatsapp.com/C3hbXjblNLiF7CoDYJ8lwY\n\n╰━━━━━━━━━━━━━━⬣`
                 }); 
                 isStarted = true;
             }
@@ -123,7 +118,17 @@ async function startKira() {
 
         if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) startKira();
+            if (shouldReconnect) {
+                console.log("🔄 Connection closed, reconnecting...");
+                startKira();
+            } else {
+                console.log("❌ Session logged out/expired. Clearing session folder...");
+                if (fs.existsSync("./session")) {
+                    fs.rmSync("./session", { recursive: true, force: true });
+                }
+                console.log("🔄 Attempting to re-fetch from SESSION_ID variable...");
+                startKira();
+            }
         }
     });
 
