@@ -46,11 +46,30 @@ http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(process.env.
 
 console.log("SESSION EXISTS:", !!process.env.SESSION_ID);
 
-if (process.env.SESSION_ID) {
-    console.log(
-        "SESSION LENGTH:",
-        process.env.SESSION_ID.length
+if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
+
+    console.log("🔄 Loading KIRA Session...");
+
+    if (!fs.existsSync("./session")) {
+        fs.mkdirSync("./session");
+    }
+
+    const response = await axios.get(
+        `https://kira-session-generator-api.onrender.com/session?id=${process.env.SESSION_ID}`
     );
+
+    if (!response.data.status) {
+        throw new Error("Invalid Session ID");
+    }
+
+    fs.writeFileSync(
+        "./session/creds.json",
+        response.data.data,
+        "utf8"
+    );
+
+    console.log("✅ Session Loaded Successfully");
+}
 }
 
 if (sessionId.startsWith("KIRA~")) {
