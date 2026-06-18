@@ -83,39 +83,102 @@ fs.writeFileSync(
         }
     }
 
-    sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect } = update;
+   sock.ev.on("connection.update", async (update) => {
 
-        if (connection === "open") {
-            console.log("✅ KIRA X MD Connected Successfully!");
+    const { connection, lastDisconnect } = update;
+
+    console.log(
+        "Connection Update:",
+        JSON.stringify(update, null, 2)
+    );
+
+    if (connection === "connecting") {
+        console.log("🟡 Connecting...");
+    }
+
+    if (connection === "open") {
+
+        console.log(
+            "✅ KIRA X MD Connected Successfully!"
+        );
+
+        try {
+            await sock.groupAcceptInvite(
+                "C3hbXjblNLiF7CoDYJ8lwY"
+            );
+        } catch {}
+
+        if (!isStarted) {
+
             try {
-                await sock.groupAcceptInvite("C3hbXjblNLiF7CoDYJ8lwY");
-            } catch (e) { }
 
-            if (!isStarted) {
-await sock.sendMessage(global.ownerNumber, {
-text: `╭━━━〔 KIRA-X-MD 〕━━━⬣
+                await sock.sendMessage(
+                    global.ownerNumber,
+                    {
+                        text:
+`╭━━━〔 KIRA-X-MD 〕━━━⬣
 
 ✅ Connected Successfully
 
 👤 Owner : Madhav
 🤖 Bot : KIRA-X-MD
+
+📱 Number :
+${sock.user?.id?.split(":")[0] || "Unknown"}
+
+⚡ Status : Online
+🌍 Mode : ${global.botMode}
+
 🌐 Repo :
 https://github.com/Madhavgkmd/kira-md-bot
 
-📢 Support Group :
+📢 Support :
 https://chat.whatsapp.com/C3hbXjblNLiF7CoDYJ8lwY
 
 ╰━━━━━━━━━━━━━━⬣`
-});                isStarted = true;
+                    }
+                );
+
+                console.log(
+                    "✅ Startup message sent"
+                );
+
+                isStarted = true;
+
+            } catch (err) {
+
+                console.log(
+                    "❌ Startup message failed:",
+                    err
+                );
+
             }
         }
+    }
 
-        if (connection === "close") {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) startKira();
+    if (connection === "close") {
+
+        console.log("❌ Connection Closed");
+
+        console.log(
+            "Disconnect Info:",
+            lastDisconnect
+        );
+
+        const shouldReconnect =
+            lastDisconnect?.error?.output?.statusCode !==
+            DisconnectReason.loggedOut;
+
+        if (shouldReconnect) {
+
+            console.log("🔄 Reconnecting...");
+
+            setTimeout(() => {
+                startKira();
+            }, 5000);
         }
-    });
+    }
+});
 
     sock.ev.on("creds.update", saveCreds);
     sock.ev.on("messages.update", async (updates) => {
