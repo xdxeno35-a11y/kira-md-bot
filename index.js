@@ -44,11 +44,14 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(process.env.PORT || 3000);
 
-async function startKira() {
-    if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
-        console.log("🔄 Loading session from SESSION_ID...");
-        if (!fs.existsSync("./session")) fs.mkdirSync("./session");
-        let sessionId = process.env.SESSION_ID;
+console.log("SESSION EXISTS:", !!process.env.SESSION_ID);
+
+if (process.env.SESSION_ID) {
+    console.log(
+        "SESSION LENGTH:",
+        process.env.SESSION_ID.length
+    );
+}
 
 if (sessionId.startsWith("KIRA~")) {
     sessionId = sessionId.slice(5);
@@ -60,15 +63,18 @@ fs.writeFileSync(
 );
     }
 
-    const { state, saveCreds } = await useMultiFileAuthState("./session");
-    const { version } = await fetchLatestBaileysVersion();
+    const decoded =
+    Buffer.from(sessionId, "base64").toString();
 
-    const sock = makeWASocket({
-        version,
-        logger: P({ level: "fatal" }),
-        auth: state,
-        printQRInTerminal: true 
-    });
+console.log(
+    "DECODED START:",
+    decoded.substring(0, 100)
+);
+
+fs.writeFileSync(
+    "./session/creds.json",
+    decoded
+);
 
     if (
     !sock.authState.creds.registered &&
