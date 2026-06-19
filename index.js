@@ -82,14 +82,13 @@ async function startKira() {
 
     console.log("📡 Initializing WhatsApp Socket Stream...");
     
-    // ടൈംഔട്ട് ഒഴിവാക്കാൻ കണക്ഷൻ സെറ്റിങ്സ് അപ്ഡേറ്റ് ചെയ്യുന്നു
     const sock = makeWASocket({
         version,
         logger: P({ level: "fatal" }),
         auth: state,
         printQRInTerminal: !process.env.SESSION_ID,
-        connectTimeoutMs: 60000, // കണക്ഷൻ ടൈം 60 സെക്കന്റായി കൂട്ടി (Fixes 408 Timeout)
-        defaultQueryTimeoutMs: 0, // ക്വറി ടൈംഔട്ട് ഒഴിവാക്കി
+        connectTimeoutMs: 60000, 
+        defaultQueryTimeoutMs: 0, 
         keepAliveIntervalMs: 30000
     });
 
@@ -115,4 +114,4 @@ async function startKira() {
             if (!isStarted) {
                 try {
                     await sock.sendMessage(global.ownerNumber, {
-                        text: `╭━━━〔 KIRA-X-MD 〕━━━⬣\n\n✅ Connected Successfully\n\n👤 Owner : Madhav\n🤖 Bot : KIRA-X-MD\n🌐 Repo :\n
+                        text: `╭━━━〔 KIRA-X-MD 〕━━━⬣\n\n✅ Connected Successfully\n\n👤 Owner : Madhav\n🤖 Bot : KIRA-X-MD\n🌐 Repo :\nhttps://github.com/Madhavgkmd/kira-md-bot\n\n📢 Support Group :\n
