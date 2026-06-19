@@ -41,12 +41,14 @@ global.api = {
 let isStarted = false; 
 global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// HTTP Server for Cloud Uptime Systems (e.g., Railway, Render)
-const PORT = process.env.PORT || 3000;
+// Railway വെബ് ഹെൽത്ത് ചെക്കിംഗിനായി പോർട്ട് ബൈൻഡിംഗ് (0.0.0.0 നിർബന്ധമാണ്)
+const PORT = process.env.PORT || 8080;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('KIRA-X-MD Online');
-}).listen(PORT, '0.0.0.0');
+}).listen(PORT, '0.0.0.0', () => {
+    console.log(`🌐 Web interface checking online via Port ${PORT}`);
+});
 
 async function startKira() {
     if (process.env.SESSION_ID && !fs.existsSync("./session/creds.json")) {
@@ -74,11 +76,12 @@ async function startKira() {
         version = [2, 3000, 1017502447]; 
     }
 
+    console.log("📡 Initializing WhatsApp Socket Stream...");
     const sock = makeWASocket({
         version,
         logger: P({ level: "fatal" }),
         auth: state,
-        printQRInTerminal: !process.env.SESSION_ID // Only print QR if no SESSION_ID is supplied
+        printQRInTerminal: !process.env.SESSION_ID 
     });
 
     // Pairing Code Strategy implementation
@@ -175,7 +178,6 @@ async function startKira() {
             for (const participant of update.participants) {
                 const targetJid = participant.id || participant;
 
-                // Welcome Trigger
                 if ((action === "add" || action === "join") && global.welcomeChats.includes(jid)) {
                     await sock.sendMessage(jid, {
                         text: `🎉 Welcome @${targetJid.split("@")[0]} to the group!`,
@@ -183,7 +185,6 @@ async function startKira() {
                     });
                 }
 
-                // Goodbye Trigger
                 if ((action === "remove" || action === "leave") && global.goodbyeChats.includes(jid)) {
                     await sock.sendMessage(jid, {
                         text: `👋 Goodbye @${targetJid.split("@")[0]}!`,
@@ -202,7 +203,6 @@ async function startKira() {
             const msg = messages[0];
             if (!msg.key?.id) return;
 
-            // Cache message for anti-delete routines
             global.messageStore[msg.key.id] = msg;
             if (Object.keys(global.messageStore).length > 5000) {
                 delete global.messageStore[Object.keys(global.messageStore)[0]];
@@ -253,7 +253,6 @@ async function startKira() {
                 }
             } 
 
-            // Prevent further execution if prefix is missing
             if (!text.startsWith(prefix)) return;
 
             const args = text.slice(prefix.length).trim().split(/ +/);
@@ -266,7 +265,6 @@ async function startKira() {
                     return await sock.sendMessage(jid, { text: "❌ *Owner only!*" }, { quoted: msg });
                 }
 
-                // Simulate processing latency delay
                 await global.sleep(1500);
                 await command.execute(sock, msg, args, isOwner);
             }
@@ -279,4 +277,5 @@ async function startKira() {
     });
 }
 
+// PM2 റൺടൈമിൽ തനിയെ ലൈവ് ആയി നിന്നോളും എന്നതിനാൽ ഇൻഫിനിറ്റ് ലൂപ്പ് ഒഴിവാക്കി സ്റ്റാർട്ട് ചെയ്യുന്നു
 startKira().catch(err => console.error("Critical Execution Fault:", err));
