@@ -50,12 +50,12 @@ http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(PORT, '0.0.0
 
 async function startKira() {
     
-    // ===== DYNAMIC API SESSION FETCHING FROM RAILWAY ENV =====
+    // ===== DYNAMIC API SESSION FETCHING WITH USER-AGENT & JSON PARSE =====
     if (!fs.existsSync("./session/creds.json")) {
         const envSessionId = process.env.SESSION_ID;
 
         if (!envSessionId) {
-            console.log("❌ Railway Error: SESSION_ID variable is completely missing in Railway Variables!");
+            console.log("❌ Railway Error: SESSION_ID variable is missing in Railway Variables!");
             console.log("🔄 Waiting 15 seconds before checking again...");
             await global.sleep(15000);
             return startKira();
@@ -68,17 +68,35 @@ async function startKira() {
         }
 
         try {
-            // Automatically appends the dynamic SESSION_ID from Railway Env
             const targetUrl = `https://kira-session-generator-api.onrender.com/session?id=${envSessionId.trim()}`;
-            const response = await axios.get(targetUrl);
+            
+            // Added Mozilla User-Agent and Fetch Headers
+            const response = await axios.get(targetUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'application/json'
+                }
+            });
 
             if (response.data && response.data.status) {
-                let credentialsData = typeof response.data.data === 'object' 
-                    ? JSON.stringify(response.data.data) 
-                    : response.data.data;
+                let credentialsData = response.data.data;
+                
+                // If data comes as a stringified JSON string, parse it first to ensure valid JSON format
+                if (typeof credentialsData === 'string') {
+                    try {
+                        credentialsData = JSON.parse(credentialsData);
+                    } catch (e) {
+                        // If it fails to parse, keep it as is
+                    }
+                }
 
-                fs.writeFileSync("./session/creds.json", credentialsData, "utf8");
-                console.log("✅ Session Loaded Successfully from Railway Environment Variable!");
+                // Final stringify to format cleanly into creds.json
+                const finalCredsRaw = typeof credentialsData === 'object' 
+                    ? JSON.stringify(credentialsData, null, 2) 
+                    : credentialsData;
+
+                fs.writeFileSync("./session/creds.json", finalCredsRaw, "utf8");
+                console.log("✅ Session Loaded and Parsed Successfully from Railway Env!");
             } else {
                 console.log("❌ Render API Error: Provided SESSION_ID is Invalid or Expired.");
                 console.log("🔄 Retrying fetch loop in 15 seconds...");
@@ -87,7 +105,7 @@ async function startKira() {
             }
 
         } catch (err) {
-            console.log("❌ API Fetch Failed (Network or Server Down):", err.message);
+            console.log("❌ API Fetch Failed (Network or User-Agent Issue):", err.message);
             if (fs.existsSync("./session/creds.json")) fs.unlinkSync("./session/creds.json");
             console.log("🔄 Retrying in 15 seconds...");
             await global.sleep(15000);
@@ -98,7 +116,7 @@ async function startKira() {
     const { state, saveCreds } = await useMultiFileAuthState("./session");
     const { version } = await fetchLatestBaileysVersion();
 
-    // STRICT CONNECTION VIA SESSION ONLY - NO TERM PAIRING
+    // STRICT CONNECTION VIA SESSION ONLY
     const sock = makeWASocket({
         version,
         logger: P({ level: "fatal" }),
