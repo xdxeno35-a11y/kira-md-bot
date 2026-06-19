@@ -7,7 +7,8 @@ const {
     default: makeWASocket,
     useMultiFileAuthState,
     DisconnectReason,
-    fetchLatestBaileysVersion
+    fetchLatestBaileysVersion,
+    Browsers
 } = require("@whiskeysockets/baileys");
 
 const { commands, loadPlugins } = require("./lib/plugins");
@@ -50,7 +51,7 @@ http.createServer((req, res) => res.end('KIRA-X-MD Online')).listen(PORT, '0.0.0
 
 async function startKira() {
     
-    // ===== DYNAMIC API SESSION FETCHING WITH USER-AGENT & JSON PARSE =====
+    // ===== DYNAMIC API SESSION FETCHING FROM RAILWAY ENV =====
     if (!fs.existsSync("./session/creds.json")) {
         const envSessionId = process.env.SESSION_ID;
 
@@ -70,7 +71,6 @@ async function startKira() {
         try {
             const targetUrl = `https://kira-session-generator-api.onrender.com/session?id=${envSessionId.trim()}`;
             
-            // Added Mozilla User-Agent and Fetch Headers
             const response = await axios.get(targetUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -81,16 +81,12 @@ async function startKira() {
             if (response.data && response.data.status) {
                 let credentialsData = response.data.data;
                 
-                // If data comes as a stringified JSON string, parse it first to ensure valid JSON format
                 if (typeof credentialsData === 'string') {
                     try {
                         credentialsData = JSON.parse(credentialsData);
-                    } catch (e) {
-                        // If it fails to parse, keep it as is
-                    }
+                    } catch (e) { }
                 }
 
-                // Final stringify to format cleanly into creds.json
                 const finalCredsRaw = typeof credentialsData === 'object' 
                     ? JSON.stringify(credentialsData, null, 2) 
                     : credentialsData;
@@ -105,7 +101,7 @@ async function startKira() {
             }
 
         } catch (err) {
-            console.log("❌ API Fetch Failed (Network or User-Agent Issue):", err.message);
+            console.log("❌ API Fetch Failed:", err.message);
             if (fs.existsSync("./session/creds.json")) fs.unlinkSync("./session/creds.json");
             console.log("🔄 Retrying in 15 seconds...");
             await global.sleep(15000);
@@ -114,17 +110,22 @@ async function startKira() {
     }
 
     const { state, saveCreds } = await useMultiFileAuthState("./session");
-    const { version } = await fetchLatestBaileysVersion();
+    
+    // Fixed: Hardcoded optimized WhatsApp Web version to prevent version handshake loop
+    const version = [2, 3000, 1015901307]; 
 
-    // STRICT CONNECTION VIA SESSION ONLY
     const sock = makeWASocket({
         version,
         logger: P({ level: "fatal" }),
         auth: state,
-        printQRInTerminal: false
+        printQRInTerminal: false,
+        browser: Browsers.macOS("Desktop"), // Added robust browser config to look like safe desktop session
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 0,
+        keepAliveIntervalMs: 10000
     });
 
-    // Connection Updates
+    // Connection Updates WITH ANTI-LOOP DELAY
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect } = update;
 
@@ -144,15 +145,22 @@ async function startKira() {
         }
 
         if (connection === "close") {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            
+            console.log(`📡 Connection closed. Code: ${statusCode || "unknown"}. Reconnecting logic triggered...`);
+
             if (shouldReconnect) {
-                console.log("🔄 Connection closed, reconnecting...");
+                // Fixed: 5 Seconds delay added before re-executing startKira to kill the infinite loop spam
+                console.log("🔄 Reconnecting in 5 seconds to avoid rate limiting...");
+                await global.sleep(5000);
                 startKira();
             } else {
-                console.log("❌ Session logged out. Clearing storage to re-fetch from Railway Env...");
+                console.log("❌ Session logged out/unlinked completely. Flushing session storage...");
                 if (fs.existsSync("./session")) {
                     fs.rmSync("./session", { recursive: true, force: true });
                 }
+                await global.sleep(5000);
                 startKira();
             }
         }
