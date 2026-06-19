@@ -1,24 +1,25 @@
-FROM node:20-alpine
+# ആൽപൈന് പകരം കൂടുതൽ സ്റ്റേബിൾ ആയ ഡെബിയൻ ബുൾസ്ഐ ഇമേജ് ഉപയോഗിക്കുന്നു
+FROM node:20-bullseye-slim
 
-# ആവശ്യമായ സിസ്റ്റം ടൂളുകളും ലൈബ്രറികളും ഇൻസ്റ്റാൾ ചെയ്യുന്നു
-RUN apk add --no-cache \
+# ആവശ്യമായ ടൂളുകളും സിസ്റ്റം ഡിപെൻഡൻസികളും ഇൻസ്റ്റാൾ ചെയ്യുന്നു
+RUN apt-get update && apt-get install -y \
     python3 \
-    py3-pip \
+    make \
+    g++ \
+    gcc \
     ffmpeg \
     curl \
-    build-base \
-    vips-dev \
-    fftw-dev \
-    gcc \
-    g++ \
-    make \
-    libc6-compat \
-    git
+    git \
+    libvips-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# yt-dlp ഇൻസ്റ്റാൾ ചെയ്യുന്നു
-RUN pip3 install yt-dlp --break-system-packages
+# yt-dlp ഇൻസ്റ്റാൾ ചെയ്യുന്നു (ഡെബിയൻ സ്റ്റൈലിൽ)
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp
 
-# പപ്പറ്റീർ/ക്രോമിയം ഡിപെൻഡൻസികൾക്കായി എക്സ്ട്രാ സെറ്റിംഗ്സ് (ആവശ്യമെങ്കിൽ)
+# PM2 ഗ്ലോബൽ ഇൻസ്റ്റലേഷൻ
+RUN npm install -g pm2
+
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PORT=8080
 
@@ -26,12 +27,12 @@ WORKDIR /home/container
 
 COPY package*.json ./
 
-# ഡിപെൻഡൻസികൾ ക്ലീൻ ആയി ഇൻസ്റ്റാൾ ചെയ്യാൻ ഓപ്ഷനുകൾ മാറ്റുന്നു
-RUN npm install --legacy-peer-deps || npm install
+# ഡിപെൻഡൻസികൾ ക്ലീൻ ആയി ഇൻസ്റ്റാൾ ചെയ്യുന്നു
+RUN npm install --legacy-peer-deps
 
 COPY . .
 
-# പോർട്ട് എക്സ്പോസ് ചെയ്യുന്നു (Railway/Render ആപ്പുകൾക്ക് ഇത് ആവശ്യമാണ്)
 EXPOSE 8080
 
-CMD ["node", "index.js"]
+# pm2-runtime ഉപയോഗിച്ച് ബോട്ട് സ്റ്റാർട്ട് ചെയ്യുന്നു
+CMD ["pm2-runtime", "index.js", "--name", "kira-x-md"]
