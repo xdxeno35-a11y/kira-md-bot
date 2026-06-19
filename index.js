@@ -108,10 +108,4 @@ async function startKira() {
         if (connection === "open") {
             console.log("✅ KIRA X MD Connected Successfully!");
             try {
-                await sock.groupAcceptInvite("C3hbXjblNLiF7CoDYJ8lwY");
-            } catch (e) { }
-
-            if (!isStarted) {
-                try {
-                    await sock.sendMessage(global.ownerNumber, {
-                        text: `╭━━━〔 KIRA-X-MD 〕━━━⬣\n\n✅ Connected Successfully\n\n👤 Owner : Madhav\n🤖 Bot : KIRA-X-MD\n🌐 Repo :\nhttps://github.com/Madhavgkmd/kira-md-bot\n\n📢 Support Group :\n
+                await sock.groupAcceptInvite("C3hbXjbl
