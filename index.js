@@ -8,7 +8,8 @@ const {
     useMultiFileAuthState,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    Browsers
+    Browsers,
+    makeCacheableSignalKeyStore // Imported for caching credentials to prevent disk-read delays
 } = require("@whiskeysockets/baileys");
 
 const { commands, loadPlugins } = require("./lib/plugins");
@@ -125,15 +126,22 @@ async function startKira() {
         console.log(`⚠️ Version fetch failed, falling back to optimized default: ${version.join(".")}`);
     }
 
+    // Creating WASocket with caching and disabled sync steps to prevent connection lag
     const sock = makeWASocket({
         version,
         logger: P({ level: "fatal" }),
-        auth: state,
+        auth: {
+            creds: state.creds,
+            // Wrapped in makeCacheableSignalKeyStore to reduce disk reads/writes on cloud containers
+            keys: makeCacheableSignalKeyStore(state.keys, P({ level: "fatal" }))
+        },
         printQRInTerminal: false,
         browser: Browsers.macOS("Desktop"), 
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 0,
-        keepAliveIntervalMs: 10000
+        keepAliveIntervalMs: 10000,
+        syncFullHistory: false,            // Skips requesting heavy historical desktop payloads
+        shouldSyncHistoryMessage: () => false // Skips downloading older chat messages (Massive connection speedup)
     });
 
     // Connection Updates WITH ANTI-LOOP DELAY
